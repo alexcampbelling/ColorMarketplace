@@ -1,0 +1,33 @@
+{
+  "name": "color-sandbox",
+  "version": "1.0.0",
+  "main": "index.js",
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@types/chai": "^4.3.14",
+    "@types/mocha": "^10.0.6",
+    "chai": "^4.4.1",
+    "hardhat": "^2.22.2",
+    "hardhat-docgen": "^1.3.0",
+    "prettier": "^3.2.5",
+    "prettier-plugin-solidity": "^1.3.1",
+    "solhint": "^4.5.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "scripts": {
+    "lint:sol:solh": "solhint 'contracts/**/*.sol'",
+    "lint:sol:prettier": "prettier --plugin=prettier-plugin-solidity --write 'contracts/**/*.sol'",
+    "lint-sol": "npm run lint:sol:solh && npm run lint:sol:prettier",
+    "docgen": "npx hardhat docgen",
+    "build": "npx hardhat compile",
+    "test": "npx hardhat test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2"
+  }
+}
