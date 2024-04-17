@@ -9,3 +9,4 @@ todo
 - configure hardhat to test on actual node instead of runtime
 - finish basic tests for marketplace
   - at least skeleton code out what will be needed
+- payable vs nonpayable, ensure I got it all down fine.
