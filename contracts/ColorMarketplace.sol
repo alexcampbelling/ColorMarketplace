@@ -70,7 +70,7 @@ contract ColorMarketplace is ReentrancyGuard {
         uint256 tokenId
     );
     // todo: do we want more information here, or infer that Color backend has this in database?
-    event ItemBought(
+    event ListingPurchased(
         uint256 indexed listingId,
         address indexed buyer,
         uint256 price,
@@ -230,7 +230,7 @@ contract ColorMarketplace is ReentrancyGuard {
 
     /**
      * @dev Allows a user to buy an item from the marketplace.
-     * Emits a {ItemBought} event.
+     * Emits a {ListingPurchased} event.
      *
      * Requirements:
      * - The value sent must be greater than or equal to the price of the listing.
@@ -271,7 +271,7 @@ contract ColorMarketplace is ReentrancyGuard {
         }
 
         // todo: decide how we will emit partial buys of 1155, emitting a different message maybe
-        emit ItemBought(listingId, msg.sender, listing.price, amount);
+        emit ListingPurchased(listingId, msg.sender, listing.price, amount);
     }
 
     /* Internal functions */
