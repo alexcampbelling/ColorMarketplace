@@ -118,6 +118,8 @@ describe("Color Marketplace Testing", function () {
     it("Remove listing");
 
     it("Purchase listing");
+
+    it("Listing expiration check");
   
     it("Only can buy with $STORY token");
     
