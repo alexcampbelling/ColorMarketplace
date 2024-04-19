@@ -130,7 +130,15 @@ describe("Color Marketplace Testing", function () {
   })
 
   describe("Story protocol specific checks", async function() {
-    it("todo: Add checks for Story protocol specific features");
+    it("IP Account for NFT found");
+
+    it("License tokens found and listed");
+
+    it("Modules found and listed");
+
+    it("IP or Module changed");
+
+    it("IP asset remixed for listed NFT")
   })
 
   describe("Custom error checks", function() {
