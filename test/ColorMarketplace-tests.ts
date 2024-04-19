@@ -45,7 +45,7 @@ describe("Color Marketplace Testing", function () {
 
     it("Check all internal functions are not reachable");
 
-    // todo: add proxy upgrade functionality checks
+    it("todo: add proxy upgrade functionality checks");
   })
 
   describe("Basic feature checks", async function() {
@@ -124,6 +124,10 @@ describe("Color Marketplace Testing", function () {
     // todo: add auction functionality and tests
   })
 
+  describe("Story protocol specific checks", async function() {
+    it("todo: Add checks for Story protocol specific features");
+  })
+
   describe("Custom error checks", function() {
     it("Should throw NotTokenOwner error when caller is not the token owner");
   
@@ -168,10 +172,6 @@ describe("Color Marketplace Testing", function () {
     // If we add owner only functions, we need to check that the owner is the only one who can call them
     it("Access Control checks");
   })
-
-  describe("Story protocol specific checks", async function() {
-    it("todo: Add checks for Story protocol specific features");
-  })
 });
 
 function findEventByName(receipt: ethers.ContractReceipt, eventName: string): ethers.Event | undefined {
@@ -181,6 +181,7 @@ function findEventByName(receipt: ethers.ContractReceipt, eventName: string): et
   return undefined;
 }
 
+// todo: abstract to take type of nft, 721 vs 1155
 async function connectAndMintNFT(account: ethers.Signer, nftContract: ethers.Contract, market?: ethers.Contract): Promise<ethers.ContractReceipt> {
   // Generate a random name for the NFT
   const nftName = `TestNFT-${Math.floor(Math.random() * 10000)}`;
