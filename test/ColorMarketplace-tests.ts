@@ -108,7 +108,6 @@ describe("Color Marketplace Testing", function () {
         console.error(`Error occurred in "Mint 721 NFT and list on market":`, error);
         throw error;
       }
-  
     })
   
     it("Mint 1155 NFT and list on market");
@@ -118,6 +117,8 @@ describe("Color Marketplace Testing", function () {
     it("Remove listing");
 
     it("Purchase listing");
+
+    it("Update listing price");
 
     it("Listing expiration check");
   
@@ -131,6 +132,7 @@ describe("Color Marketplace Testing", function () {
   })
 
   describe("Custom error checks", function() {
+    // todo: need to think about the code paths to get to each of these (coverage)
     it("Should throw NotTokenOwner error when caller is not the token owner");
   
     it("Should throw InvalidArrayLength error when array length is invalid");

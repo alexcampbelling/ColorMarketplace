@@ -26,10 +26,8 @@ To run a script, open your terminal, navigate to the project directory, and ente
 
 - Licensing
 - Deployment scripts
-- Contract interaction scripts
 - .env file
 - Configure Hardhat to test on actual node instead of runtime
-- Finish basic tests for marketplace
 - Payable vs nonpayable, ensure I got it all down fine
 
 ## License

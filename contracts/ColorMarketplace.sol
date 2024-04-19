@@ -76,6 +76,11 @@ contract ColorMarketplace is ReentrancyGuard {
         uint256 price,
         uint256 amount
     );
+    event ListingUpdated(
+        uint256 indexed listingId, 
+        uint256 indexed newPrice
+    );
+
 
     /* Custom errors */
     // todo: confirm these parameters are correct
@@ -272,6 +277,60 @@ contract ColorMarketplace is ReentrancyGuard {
 
         // todo: decide how we will emit partial buys of 1155, emitting a different message maybe
         emit ListingPurchased(listingId, msg.sender, listing.price, amount);
+    }
+
+    /**
+     * @dev Allows the owner of a listing to update its price.
+     * Emits a {ListingUpdated} event.
+     *
+     * Requirements:
+     * - The caller must be the owner of the listing.
+     * - The listing must exist.
+     * - The owner must still own the token.
+     * - The marketplace contract must be approved to transfer the token.
+     *
+     * @param listingId The ID of the listing to be updated.
+     * @param newPrice The new price for the listing.
+     */
+    function updateListingPrice(uint256 listingId, uint256 newPrice) public {
+        // Check if the listing exists
+        Listing storage listing = listings[listingId];
+        if (listing.seller == address(0)) {
+            revert ListingDoesNotExist(listingId);
+        }
+
+        // Check if the caller is the owner of the listing
+        if (msg.sender != listing.seller) {
+            revert NotListingOwner(msg.sender, listingId);
+        }
+
+        // Check if the owner still owns the token
+        if (listing.tokenType == TokenType.ERC721) {
+            if (IERC721(listing.contractAddress).ownerOf(listing.tokenId) != msg.sender) {
+                revert SellerDoesNotOwnToken();
+            }
+        } else {
+            if (IERC1155(listing.contractAddress).balanceOf(msg.sender, listing.tokenId) < listing.availableAmount) {
+                revert SellerDoesNotHaveEnoughTokens();
+            }
+        }
+
+        // Check if the marketplace contract is approved to transfer the token
+        if (listing.tokenType == TokenType.ERC721) {
+            if (!IERC721(listing.contractAddress).isApprovedForAll(msg.sender, address(this))) {
+                revert ContractNotApproved();
+            }
+        } else {
+            if (!IERC1155(listing.contractAddress).isApprovedForAll(msg.sender, address(this))) {
+                revert ContractNotApproved();
+            }
+        }
+
+        // Update the price of the listing
+        listing.price = newPrice;
+
+        // Emit the ListingUpdated event
+        emit ListingUpdated(listingId, newPrice);
     }
 
     /* Internal functions */
