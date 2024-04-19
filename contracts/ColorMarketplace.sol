@@ -123,7 +123,7 @@ contract ColorMarketplace is ReentrancyGuard {
         if (amount <= 0) revert AmountMustBeGreaterThanZero();
 
         // Create listing object
-        listingId = currentListingId++;
+        listingId = currentListingId;
         Listing storage newListing = listings[listingId];
 
         newListing.tokenType = tokenType;
@@ -133,20 +133,20 @@ contract ColorMarketplace is ReentrancyGuard {
         newListing.tokenId = tokenId;
         newListing.price = price;
         newListing.amount = amount;
-        newListing.availableAmount = amount;
+        newListing.availableAmount = amount; // todo: logic for available amount needs checks
 
         // Check listing requirements
         checkTokenRequirements(newListing, amount);
         transferToken(newListing, address(this), amount);
 
         currentListingId++;
-        listings[currentListingId] = newListing;
+        listings[listingId] = newListing;
 
         emit ListingCreated(
             tokenType,
             contractAddress,
             msg.sender,
-            currentListingId,
+            listingId,
             tokenId,
             price,
             amount
@@ -301,6 +301,7 @@ contract ColorMarketplace is ReentrancyGuard {
                 revert SellerDoesNotOwnToken();
             }
             if (!token721.isApprovedForAll(msg.sender, address(this))) {
+                // todo: we might need to do "approve" check too, as this approve all might not be specific enough
                 revert ContractNotApproved();
             }
             if (amount != 1) {
@@ -331,7 +332,9 @@ contract ColorMarketplace is ReentrancyGuard {
     ) private {
         if (listing.tokenType == TokenType.ERC721) {
             IERC721 token = IERC721(listing.contractAddress);
-            token.transferFrom(address(this), buyer, listing.tokenId);
+            // token.transferFrom(address(this), buyer, listing.tokenId);
+            token.transferFrom(listing.seller, buyer, listing.tokenId);
+            // ERC721IncorrectOwner(from, tokenId, previousOwner);
         } else if (listing.tokenType == TokenType.ERC1155) {
             IERC1155 token = IERC1155(listing.contractAddress);
             token.safeTransferFrom(

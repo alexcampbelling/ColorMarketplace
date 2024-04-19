@@ -12,7 +12,7 @@ contract ColorNFT is ERC721URIStorage {
 
     constructor() ERC721("ColorNFT", "CNFT-T") {}
 
-    function mintNFT(string memory tokenURI) public returns (uint256) {
+    function mint(string memory tokenURI) public returns (uint256) {
         _tokenCounter = _tokenCounter + 1;
 
         uint256 newItemId = _tokenCounter;
