@@ -121,6 +121,8 @@ describe("Color Marketplace Testing", function () {
     it("Update listing price");
 
     it("Listing expiration check");
+
+    it("Listing not available");
   
     it("Only can buy with $STORY token");
     
