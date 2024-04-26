@@ -7,3 +7,6 @@ artifacts
 coverage
 logs
 docgen
+
+# test flattening contracts for verification tests
+flatten.sol

@@ -7,6 +7,7 @@
     "@types/chai": "^4.3.14",
     "@types/mocha": "^10.0.6",
     "chai": "^4.4.1",
+    "dotenv": "^16.4.5",
     "hardhat": "^2.22.2",
     "hardhat-docgen": "^1.3.0",
     "prettier": "^3.2.5",
@@ -21,7 +22,13 @@
     "lint-sol": "npm run lint:sol:solh && npm run lint:sol:prettier",
     "docgen": "npx hardhat docgen",
     "build": "npx hardhat compile",
-    "test": "npx hardhat test"
+    "test": "HARDHAT_TEST=true npx hardhat test",
+    "clean": "rm -rf artifacts cache",
+    "clean-build": "npm run sol:clean && npm run build",
+    "load-env": "npx dotenv --require",
+    "deploy-testnet": "npx hardhat run scripts/deploy.ts --network testnet",
+    "deploy-mainnet": "npx hardhat run scripts/deploy.ts --network mainnet",
+    "flatten": "npx hardhat flatten > flatten.sol"
   },
   "keywords": [],
   "author": "",
