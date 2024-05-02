@@ -3,8 +3,6 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const CONTRACT_NAME = "ColorMarketplace";
-
 async function main() {
   const networkName = network.name;
 
@@ -12,17 +10,28 @@ async function main() {
 
   const [deployer] = await ethers.getSigners();
 
+  // const contractName = process.env.CONTRACT_NAME;
+  const contractName = process.env.npm_config_contract_name;
+
   console.log(
-    `Deploying ${CONTRACT_NAME} on ${networkName} with the account:`,
+    `Deploying ${contractName} on ${networkName} with the account:`,
     deployer.address
   );
 
-  console.log("Account balance:", (await deployer.getBalance()).toString()); // todo, get this out of gwei
+  if (contractName === "ColorMarketplace") {
+    const ColorMarketplace = await ethers.getContractFactory("ColorMarketplace");
+    const colorMarketplace = await ColorMarketplace.deploy();
+    console.log("ColorMarketplace contract address:", colorMarketplace.address);
+  } else if (contractName === "ColorNFT") {
+    const ColorNFT = await ethers.getContractFactory("ColorNFT");
+    const colorNFT = await ColorNFT.deploy();
+    console.log("ColorNFT contract address:", colorNFT.address);
+  } else {
+    console.error("CONTRACT_NAME environment variable is not set or invalid");
+    process.exit(1);
+  }
 
-  const Contract = await ethers.getContractFactory(CONTRACT_NAME);
-  const contract = await Contract.deploy();
-
-  console.log("Contract address:", contract.address);
+  console.log("Account balance left:", (await deployer.getBalance()).toString());
 }
 
 main()

@@ -39,3 +39,11 @@ To run a script, open your terminal, navigate to the project directory, and ente
 ## License
 
 This project is licensed under the [insert license here]. See the [LICENSE](LICENSE) file for details. (todo)
+
+
+
+## Notes (remove)
+- "npm run testnet-test --address=your_contract_address" to specify deployed Color address for testing on testnet
+
+npm run deploy-sepolia --contract_name=ColorMarketplace
+npm run deploy-sepolia --contract_name=ColorNFT

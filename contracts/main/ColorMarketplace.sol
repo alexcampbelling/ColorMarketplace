@@ -26,6 +26,11 @@ contract ColorMarketplace is ReentrancyGuard {
         ERC1155
     }
 
+    enum TransferDirection {
+        Listing,
+        Purchase
+    }
+
     struct Listing {
         TokenType tokenType;
         address contractAddress;
@@ -44,7 +49,7 @@ contract ColorMarketplace is ReentrancyGuard {
     /* Variables */
     // Here we use a incremental id since only this contract is creating listings
     // If we want mutliple contracts to make listings later, we can make this a hash
-    uint256 private currentListingId = 0;
+    uint256 public currentListingId = 0;
 
     /* Storage */
     mapping(uint256 => Listing) public listings;
@@ -98,7 +103,14 @@ contract ColorMarketplace is ReentrancyGuard {
     error AmountMustBeGreaterThanZero();
     error ListingDoesNotExist(uint256 listingId);
     error NotListingOwner(address caller, uint256 listingId);
-    error CannotBuyPartialERC721(uint256 tokenId);
+    error CannotDenotePartialERC721(uint256 tokenId);
+    error MarketDoesNotOwnToken();
+    error MarketDoesNotHaveEnoughTokens();
+
+
+    // todo: remove this, and/or abstract this out
+    error DebugEvent(address expectedOwner, address approvedAddress, uint256 tokenId);
+
 
     /* External functions */
 
@@ -141,8 +153,9 @@ contract ColorMarketplace is ReentrancyGuard {
         newListing.availableAmount = amount; // todo: logic for available amount needs checks
 
         // Check listing requirements
-        checkTokenRequirements(newListing, amount);
-        transferToken(newListing, address(this), amount);
+        checkListingRequirements(newListing, amount);
+
+        transferToken(newListing, address(this), amount, TransferDirection.Listing);
 
         currentListingId++;
         listings[listingId] = newListing;
@@ -220,7 +233,7 @@ contract ColorMarketplace is ReentrancyGuard {
         }
 
         // Remove the entire amount of the listing
-        transferToken(listing, msg.sender, listing.amount);
+        transferToken(listing, msg.sender, listing.amount, TransferDirection.Purchase);
 
         delete listings[listingId];
 
@@ -242,7 +255,7 @@ contract ColorMarketplace is ReentrancyGuard {
      *
      * @param listingId The ID of the listing to be bought.
      */
-    function buyListing(
+    function purchaseListing(
         uint256 listingId,
         uint256 amount
     ) public payable nonReentrant {
@@ -252,7 +265,7 @@ contract ColorMarketplace is ReentrancyGuard {
         performBuyListingChecks(listing, msg.sender);
 
         // Check token requirements
-        checkTokenRequirements(listing, amount);
+        checkPurchaseRequirements(listing, amount);
 
         // Transfer payment to seller
         uint256 totalPrice = listing.price * amount;
@@ -262,7 +275,7 @@ contract ColorMarketplace is ReentrancyGuard {
         payable(listing.seller).transfer(totalPrice);
 
         // Transfer token to buyer
-        transferToken(listing, msg.sender, amount);
+        transferToken(listing, msg.sender, amount, TransferDirection.Purchase);
 
         // Update listing amount
         if (listing.tokenType == TokenType.ERC1155) {
@@ -277,6 +290,38 @@ contract ColorMarketplace is ReentrancyGuard {
 
         // todo: decide how we will emit partial buys of 1155, emitting a different message maybe
         emit ListingPurchased(listingId, msg.sender, listing.price, amount);
+    }
+
+    /**
+     * @dev Checks if a listing still exists by its `listingId`.
+     *
+     * @param _listingId The ID of the listing.
+     */
+    function listingExistsById(uint256 _listingId) public view returns (bool) {
+        Listing storage listing = listings[_listingId];
+        return listing.availableAmount > 0;
+    }
+
+    /**
+     * @dev Checks if a listing still exists by its `contractAddress` and `tokenId`.
+     * Returns the `listingId` if it exists, otherwise returns 0.
+     *
+     * @param _contractAddress The address of the NFT contract.
+     * @param _tokenId The ID of the NFT.
+     */
+    // todo: can we change listing from array to map to reduce searching?
+    function listingExistsByAddressAndTokenId(address _contractAddress, uint256 _tokenId) public view returns (uint256) {
+        for (uint256 i = 0; i < currentListingId; i++) {
+            Listing storage listing = listings[i];
+            if (listing.contractAddress == _contractAddress && listing.tokenId == _tokenId && listing.availableAmount > 0) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    function getListingDetailsById(uint256 id) public view returns (Listing memory) {
+        return listings[id];
     }
 
     /**
@@ -302,17 +347,6 @@ contract ColorMarketplace is ReentrancyGuard {
         // Check if the caller is the owner of the listing
         if (msg.sender != listing.seller) {
             revert NotListingOwner(msg.sender, listingId);
-        }
-
-        // Check if the owner still owns the token
-        if (listing.tokenType == TokenType.ERC721) {
-            if (IERC721(listing.contractAddress).ownerOf(listing.tokenId) != msg.sender) {
-                revert SellerDoesNotOwnToken();
-            }
-        } else {
-            if (IERC1155(listing.contractAddress).balanceOf(msg.sender, listing.tokenId) < listing.availableAmount) {
-                revert SellerDoesNotHaveEnoughTokens();
-            }
         }
 
         // Check if the marketplace contract is approved to transfer the token
@@ -350,29 +384,56 @@ contract ColorMarketplace is ReentrancyGuard {
      * @param listing The listing to check requirements for.
      * @param amount The amount of tokens being transacted.
      */
-    function checkTokenRequirements(
+    function checkListingRequirements(
+    Listing storage listing,
+    uint256 amount
+    ) internal view {
+        if (listing.tokenType == TokenType.ERC721) {
+            IERC721 token721 = IERC721(listing.contractAddress);
+            // Check if the seller owns the token
+            if (token721.ownerOf(listing.tokenId) != listing.seller) {
+                revert SellerDoesNotOwnToken();
+            }
+            // Check if the market is approved to manage the seller's tokens
+            if (!token721.isApprovedForAll(listing.seller, address(this))) {
+                revert ContractNotApproved();
+            }
+            if (amount != 1) {
+                revert CannotDenotePartialERC721(listing.tokenId);
+            }
+        } else if (listing.tokenType == TokenType.ERC1155) {
+            IERC1155 token1155 = IERC1155(listing.contractAddress);
+            // Check if the seller has enough tokens to list
+            if (token1155.balanceOf(listing.seller, listing.tokenId) < amount) {
+                revert SellerDoesNotHaveEnoughTokens();
+            }
+            // Check if the market is approved to manage the seller's tokens
+            if (!token1155.isApprovedForAll(listing.seller, address(this))) {
+                revert ContractNotApproved();
+            }
+        } else {
+            revert InvalidTokenType();
+        }
+    }
+
+    function checkPurchaseRequirements(
         Listing storage listing,
         uint256 amount
     ) internal view {
         if (listing.tokenType == TokenType.ERC721) {
             IERC721 token721 = IERC721(listing.contractAddress);
-            if (token721.ownerOf(listing.tokenId) != listing.seller) {
-                revert SellerDoesNotOwnToken();
-            }
-            if (!token721.isApprovedForAll(msg.sender, address(this))) {
-                // todo: we might need to do "approve" check too, as this approve all might not be specific enough
-                revert ContractNotApproved();
+            // Check if the market owns the token
+            if (token721.ownerOf(listing.tokenId) != address(this)) {
+                revert MarketDoesNotOwnToken();
             }
             if (amount != 1) {
-                revert CannotBuyPartialERC721(listing.tokenId);
+                revert CannotDenotePartialERC721(listing.tokenId);
             }
         } else if (listing.tokenType == TokenType.ERC1155) {
             IERC1155 token1155 = IERC1155(listing.contractAddress);
-            if (token1155.balanceOf(listing.seller, listing.tokenId) < amount) {
-                revert SellerDoesNotHaveEnoughTokens();
-            }
-            if (!token1155.isApprovedForAll(msg.sender, address(this))) {
-                revert ContractNotApproved();
+            // Check if the market has enough tokens to sell
+            if (token1155.balanceOf(address(this), listing.tokenId) < amount) {
+                revert MarketDoesNotHaveEnoughTokens();
             }
         } else {
             revert InvalidTokenType();
@@ -387,22 +448,27 @@ contract ColorMarketplace is ReentrancyGuard {
     function transferToken(
         Listing storage listing,
         address buyer,
-        uint256 amount
+        uint256 amount,
+        TransferDirection direction
     ) private {
         if (listing.tokenType == TokenType.ERC721) {
             IERC721 token = IERC721(listing.contractAddress);
-            // token.transferFrom(address(this), buyer, listing.tokenId);
-            token.transferFrom(listing.seller, buyer, listing.tokenId);
-            // ERC721IncorrectOwner(from, tokenId, previousOwner);
+            if (direction == TransferDirection.Listing) {
+                // Transfer from seller to marketplace during listing
+                token.transferFrom(listing.seller, address(this), listing.tokenId);
+            } else {
+                // Transfer from marketplace to buyer during purchase
+                token.transferFrom(address(this), buyer, listing.tokenId);
+            }
         } else if (listing.tokenType == TokenType.ERC1155) {
             IERC1155 token = IERC1155(listing.contractAddress);
-            token.safeTransferFrom(
-                address(this),
-                buyer,
-                listing.tokenId,
-                amount,
-                ""
-            );
+            if (direction == TransferDirection.Listing) {
+                // Transfer from seller to marketplace during listing
+                token.safeTransferFrom(listing.seller, address(this), listing.tokenId, amount, "");
+            } else {
+                // Transfer from marketplace to buyer during purchase
+                token.safeTransferFrom(address(this), buyer, listing.tokenId, amount, "");
+            }
         }
     }
 
