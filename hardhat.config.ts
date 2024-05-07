@@ -11,7 +11,18 @@ dotenv.config();
 const isTestnet = process.env.HARDHAT_TEST === "true";
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.25",
+  solidity: //"0.8.25",
+  {
+    version: "0.8.25",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 1, // Needs this to be under the 24kb limit for contracts
+      },
+      "viaIR": true,
+    }
+  },
+  // todo: use contractSizer plugin: https://www.npmjs.com/package/hardhat-contract-sizer
   // defaultNetwork: "sepolia", (todo: this makes tests run slowly then timeout, why?)
   paths: {
     artifacts: "./artifacts",

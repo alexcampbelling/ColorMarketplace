@@ -24,4 +24,3 @@ contract ColorNFT is ERC721URIStorage {
         return newItemId;
     }
 }
-

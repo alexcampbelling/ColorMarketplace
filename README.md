@@ -12,7 +12,7 @@ Please note that this project is currently in alpha. It is not recommended to us
 
 *First run `cp .env.example .env` and fill out the env vars you may need!!!*
 
-This project uses npm scripts for task automation. Here's a list of the available scripts and what they do:
+This project uses npm scripts for task runs. Here's a list of the available scripts and what they do:
 
 - `npm run lint-sol`: This script runs both the Solhint and Prettier scripts to lint and format the Solidity files.
 
@@ -20,20 +20,20 @@ This project uses npm scripts for task automation. Here's a list of the availabl
 
 - `npm run build`: This script compiles the smart contracts using Hardhat.
 
-- `npm run test`: This script runs the test suite using Hardhat.
+- `npm run local-test`: This script runs the test suite using Hardhat. It uses the hardhat runtime environment with taregt evm "Paris".
 
-- `npm run deploy-testnet`: Deploys market code to testnet via hardhat
+- `npm run testnet-test <market address>`: Will run the same tests as local on the given address. (Only for Sepolia atm)
 
-- `npm run deploy-mainnet`: NOT IMPLEMENTED
+- `npm run clean`: Removed local artifacts and cache directories for sanity checking solidity builds.
 
-To run a script, open your terminal, navigate to the project directory, and enter the command for the script. For example, to run the `build` script, you would enter `npm run build`.
+- `npm run clean-build`: Does the above and then builds
+
+- `npm run deploy-sepolia`: Deploys current built contracts to the Sepolia testnet chain. Check the `scripts/deploy.ts` for details.
+
+- `npm run flatten`: Flattens all solidity files into one file. This is just for verifying contracts on testnet, we should upload and verify via multiple files for launch.
 
 ## Todo
 
-- Licensing
-- Payable vs nonpayable, ensure I got it all down fine
-- Consider Forge testing (for fuzzing and tracing, but more overhead to get this started where hardhat works already)
-  - Maybe do business / integration tests in hardhat, and fuzzing / unit tests in forge
 
 
 ## License
@@ -41,8 +41,7 @@ To run a script, open your terminal, navigate to the project directory, and ente
 This project is licensed under the [insert license here]. See the [LICENSE](LICENSE) file for details. (todo)
 
 
-
-## Notes (remove)
+## Notes (to remove)
 - "npm run testnet-test --address=your_contract_address" to specify deployed Color address for testing on testnet
 
 npm run deploy-sepolia --contract_name=ColorMarketplace
