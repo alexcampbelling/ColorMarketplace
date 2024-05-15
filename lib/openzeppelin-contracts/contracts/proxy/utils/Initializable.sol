@@ -53,6 +53,7 @@ pragma solidity ^0.8.20;
  * ```
  * ====
  */
+
 abstract contract Initializable {
     /**
      * @dev Storage of the initializable contract.

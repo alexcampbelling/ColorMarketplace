@@ -3,10 +3,9 @@
 pragma solidity ^0.8.25;
 
 /**
- * @title Color Marketplace (v1.0-alpha-2)
+ * @title Color Marketplace (v1.0)
  * @author alexcampbelling
- * @custom:experimental This is an experimental and unfinished contract.
- * @custom:cite This is based off MarketplaceV3 from thirdweb.com
+ * @note: Test coverage is not extremely thorough, 
  */
 
 /* External imports */
@@ -14,7 +13,6 @@ pragma solidity ^0.8.25;
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
-import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -26,62 +24,67 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./IColorMarketplace.sol";
 import "./CurrencyTransferLib.sol";
 
+/* Story specific */
+
+import { ILicenseToken } from "./ILicenseToken.sol";
+
+/// @title ColorMarketplace AKA Color
 contract ColorMarketplace is
     IColorMarketplace,
     ReentrancyGuard,
     ERC2771Context,
     AccessControl,
-    Initializable,
     IERC721Receiver,
     IERC1155Receiver
 {
-    /* Hard coded for testing purposes */
-    // todo: remove this assumption that native token is the 0 address, as they don't have one tbh!
-    address public _currencyToAccept =
-        0x0000000000000000000000000000000000000000;
+    // Contract information
+    string public constant NAME = "Color Marketplace"; // The name of the marketplace
+    string public constant VERSION = "1.0.0"; // The version of the marketplace contract
+    string public contractURI; // The URI for the contract level metadata
 
-    /* State variables */
+    // Token contracts
+    address private immutable NATIVE_TOKEN_WRAPPER; // The address of the native token wrapper contract (equivalent to WETH)
+    ILicenseToken public licenseToken; // The address of the license token contract, used to check for transferability
+    mapping(address => bool) public erc20Whitelist; // A whitelist of ERC20 tokens that can be used in the marketplace
 
-    string public constant NAME = "Color Marketplace";
-    string public constant VERSION = "1.0.0-alpha-2";
+    // Marketplace settings
+    uint64 public constant MAX_BPS = 10_000; // The maximum basis points (bps) value, equivalent to 100%
+    uint64 private platformFeeBps; // The percentage of primary sales collected as platform fees, in bps
+    uint64 public timeBuffer; // The amount of time added to an auction's 'endTime' if a bid is made within `timeBuffer` seconds of the existing `endTime`
+    uint64 public bidBufferBps; // The minimum percentage increase required from the previous winning bid, in bps
 
-    /// @dev The address of the native token wrapper contract. (WETH basically)
-    address private immutable NATIVE_TOKEN_WRAPPER;
-
-    /// @dev Total number of listings ever created in the marketplace.
-    uint256 public totalListings;
-
-    /// @dev The address of the platform fee recipient.
-    address private platformFeeRecipient; // todo: check we want this
-
-    /// @dev The max bps of the contract. So, 10_000 == 100 %
-    uint64 public constant MAX_BPS = 10_000;
-
-    /// @dev The % of primary sales collected as platform fees.
-    uint64 private platformFeeBps;
-
-    /**
-     *  @dev The amount of time added to an auction's 'endTime', if a bid is made within `timeBuffer`
-     *       seconds of the existing `endTime`. Default: 15 minutes.
-     */
-    uint64 public timeBuffer;
-
-    /// @dev The minimum % increase required from the previous winning bid. Default: 5%.
-    uint64 public bidBufferBps; // todo: investigate more
-
-    /* Mappings */
-
-    /// @dev Mapping from uid of listing => listing info.
-    mapping(uint256 => Listing) public listings;
-
-    /// @dev Mapping from uid of a direct listing => offeror address => offer made to the direct listing by the respective offeror.
-    mapping(uint256 => mapping(address => Offer)) public offers;
-
-    /// @dev Mapping from uid of an auction listing => current winning bid in an auction.
-    mapping(uint256 => Offer) public winningBid;
+    // Marketplace state
+    uint256 public totalListings; // The total number of listings ever created in the marketplace
+    address private platformFeeRecipient; // The address that receives the platform fees
+    mapping(uint256 => Listing) public listings; // A mapping from listing UID to listing info
+    mapping(uint256 => mapping(address => Offer)) public offers; // A mapping from listing UID to a nested mapping from offeror address to the offer they made
+    mapping(uint256 => Offer) public winningBid; // A mapping from auction listing UID to the current winning bid
 
     /* Modifiers */
 
+    /**
+     * @dev Ensures the token is either the native token or a whitelisted ERC20 token.
+     *
+     * Requirements:
+     * - `tokenAddress` must be either the native token or a token in the `erc20Whitelist`.
+     *
+     * @param tokenAddress The address of the token.
+     */
+    modifier onlyWhitelistedErc20s(address tokenAddress) {
+        if (tokenAddress != CurrencyTransferLib.NATIVE_TOKEN && !erc20Whitelist[tokenAddress]) {
+            revert TokenNotAccepted();
+        }
+        _;
+    }
+
+    /**
+     * @dev Ensures the caller is the creator of the listing.
+     *
+     * Requirements:
+     * - `msg.sender` must be the owner of the listing.
+     *
+     * @param _listingId The ID of the listing.
+     */
     modifier onlyListingCreator(uint256 _listingId) {
         if (listings[_listingId].tokenOwner != _msgSender()) {
             revert NotListingOwner();
@@ -89,55 +92,71 @@ contract ColorMarketplace is
         _;
     }
 
-    /// @dev Checks whether a listing exists.
+    /**
+     * @dev Checks whether a listing exists.
+     *
+     * Requirements:
+     * - The `assetContract` field of the listing must not be the zero address.
+     *
+     * @param _listingId The ID of the listing.
+     */
     modifier onlyExistingListing(uint256 _listingId) {
-        // todo: is this the most clear way of doign this?
         if (listings[_listingId].assetContract == address(0)) {
             revert DoesNotExist();
         }
         _;
     }
 
-    /* Constructor */
-    // todo: Correctly init a trusted meta transaction address for checking forwards.
-    // constructor(address trustedForwarder) ERC2771Context(trustedForwarder) {}
-    // constructor(address _nativeTokenWrapper) initializer {
-    //     nativeTokenWrapper = _nativeTokenWrapper;
-    // }
+    /* Constructor and initialiser */
 
     constructor(
-        address trustedForwarder,
-        address _nativeTokenWrapper
-    ) ERC2771Context(trustedForwarder) initializer {
-        NATIVE_TOKEN_WRAPPER = _nativeTokenWrapper;
-    }
-
-    function initialize(
+        address _nativeTokenWrapper,
+        address _trustedForwarder,
         address _defaultAdmin,
+        string memory _contractURI,
         address _platformFeeRecipient,
-        uint256 _platformFeeBps
-    ) external initializer {
-        // todo: check that inherited contracts are correctly set up
-        // - reentryguard is up
-        // - erc2771 trusted forwarders is set up
+        uint256 _platformFeeBps,
+        address[] memory _erc20Whitelist,
+        address _licenseTokenAddress
+    ) ERC2771Context(_trustedForwarder)  {
+        NATIVE_TOKEN_WRAPPER = _nativeTokenWrapper;
 
-        // Initialize this contract's state.
         timeBuffer = 15 minutes;
         bidBufferBps = 500;
 
+        contractURI = _contractURI;
         platformFeeBps = uint64(_platformFeeBps);
         platformFeeRecipient = _platformFeeRecipient;
+        
+        for (uint i = 0; i < _erc20Whitelist.length; i++) {
+            erc20Whitelist[_erc20Whitelist[i]] = true;
+        }
 
-        // Grant the DEFAULT_ADMIN_ROLE to the _defaultAdmin address.
-        grantRole(DEFAULT_ADMIN_ROLE, _defaultAdmin);
+        licenseToken = ILicenseToken(_licenseTokenAddress);
+
+        _grantRole(DEFAULT_ADMIN_ROLE, _defaultAdmin);
     }
 
-    /// @dev Lets the contract receives native tokens from `nativeTokenWrapper` withdraw.
-    // todo: check this logic
+    /**
+     * @dev Allows the contract to receive native tokens from `nativeTokenWrapper` withdraw.
+     *
+     * Emits a {ReceivedEther} event.
+     *
+     * Requirements:
+     * - The function must be called by a payable transaction.
+     */
     receive() external payable {
         emit ReceivedEther(msg.sender, msg.value);
     }
 
+    /**
+     * @dev Handles the receipt of an ERC721 token.
+     *
+     * This function is called by an ERC721 contract when a token is transferred to this contract.
+     * It returns a bytes4 value to signal that the transfer was accepted.
+     *
+     * @return bytes4 `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))`
+     */
     function onERC721Received(
         address,
         address,
@@ -147,7 +166,14 @@ contract ColorMarketplace is
         return this.onERC721Received.selector;
     }
 
-    /* Receiving 165 721 1155 logic */
+    /**
+     * @dev Handles the receipt of an ERC1155 token.
+     *
+     * This function is called by an ERC1155 contract when a token is transferred to this contract.
+     * It returns a bytes4 value to signal that the transfer was accepted.
+     *
+     * @return bytes4 `bytes4(keccak256("onERC1155Received(address,address,uint256,uint256,bytes)"))`
+     */
     function onERC1155Received(
         address,
         address,
@@ -158,6 +184,14 @@ contract ColorMarketplace is
         return this.onERC1155Received.selector;
     }
 
+    /**
+     * @dev Handles the receipt of a batch of ERC1155 tokens.
+     *
+     * This function is called by an ERC1155 contract when a batch of tokens is transferred to this contract.
+     * It returns a bytes4 value to signal that the transfer was accepted.
+     *
+     * @return bytes4 `bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))`
+     */
     function onERC1155BatchReceived(
         address,
         address,
@@ -168,9 +202,67 @@ contract ColorMarketplace is
         return this.onERC1155BatchReceived.selector;
     }
 
-    /* Listing logic */
-
+    /**
+     * @dev Creates a new listing on the marketplace.
+     *
+     * Emits a {ListingAdded} event.
+     *
+     * Requirements:
+     * - `msg.sender` must be the owner of the NFT.
+     * - The currency of the listing must be whitelisted.
+     * - The quantity of tokens to list must be greater than 0.
+     * - The listing must not start in the past.
+     * - The token must be valid and approved for transfer.
+     * - If the listing is an auction, the buyout price must not be less than the reserve price.
+     *
+     * @param _params The parameters for the listing. See IColorMarketplace.sol for more details.
+     */
     function createListing(ListingParameters memory _params) external override {
+        _createListingInternal(_params);
+    }
+
+    /**
+     * @dev Creates multiple new listings on the marketplace.
+     *
+     * Emits a {ListingAdded} event for each new listing.
+     *
+     * Requirements:
+     * - `msg.sender` must be the owner of the NFTs.
+     * - The currency of each listing must be whitelisted.
+     * - The quantity of tokens to list in each listing must be greater than 0.
+     * - Each listing must not start in the past.
+     * - The tokens in each listing must be valid and approved for transfer.
+     * - If a listing is an auction, the buyout price must not be less than the reserve price.
+     *
+     * @param _paramsArray An array of parameters for the listings.
+     */
+    function createListingsBatch(ListingParameters[] memory _paramsArray) external {
+        for (uint256 i = 0; i < _paramsArray.length; i++) {
+            _createListingInternal(_paramsArray[i]);
+        }
+    }
+
+    /**
+     * @dev Creates a new listing on the marketplace.
+     *
+     * This is an internal function that is called by `createListing` and `createListingsBatch`.
+     * It collates all the necessary data for the listing, validates the ownership and approval of the tokens,
+     * and creates a new `Listing` struct. If the listing type is an auction, it transfers the tokens to be listed
+     * to the marketplace contract.
+     *
+     * Emits a {ListingAdded} event.
+     *
+     * Requirements:
+     * - `msg.sender` must be the owner of the NFT.
+     * - The currency of the listing must be whitelisted.
+     * - The quantity of tokens to list must be greater than 0.
+     * - The listing must not start in the past.
+     * - The token must be valid and approved for transfer.
+     * - If the listing is an auction, the buyout price must not be less than the reserve price.
+     *
+     * @param _params The parameters for the listing.
+     */
+    function _createListingInternal(ListingParameters memory _params) internal onlyWhitelistedErc20s(_params.currency) {
         // Collate all lisiting data
         uint256 listingId = totalListings;
         totalListings += 1;
@@ -213,7 +305,7 @@ contract ColorMarketplace is
             startTime: startTime,
             endTime: startTime + _params.secondsUntilEndTime,
             quantity: tokenAmountToList,
-            currency: _params.currency, // todo: check this is unchanged from hard code in dev stage 
+            currency: _params.currency,
             reservePricePerToken: _params.reservePricePerToken,
             buyoutPricePerToken: _params.buyoutPricePerToken,
             tokenType: tokenTypeOfListing,
@@ -224,7 +316,6 @@ contract ColorMarketplace is
 
         // Tokens listed for sale in an auction are escrowed in Marketplace.
         if (newListing.listingType == ListingType.Auction) {
-            // todo: sanity check this
             if (
                 newListing.buyoutPricePerToken != 0 &&
                 newListing.buyoutPricePerToken < newListing.reservePricePerToken
@@ -247,14 +338,37 @@ contract ColorMarketplace is
         );
     }
 
+    /**
+     * @dev Updates an existing listing on the marketplace.
+     *
+     * Emits a {ListingUpdated} event.
+     *
+     * Requirements:
+     * - `msg.sender` must be the creator of the listing.
+     * - The currency of the listing must be whitelisted.
+     * - The new quantity of tokens to list must be greater than 0.
+     * - The listing must not start in the past.
+     * - The token must be valid and approved for transfer.
+     * - If the listing is an auction, it must not have already started.
+     * - If the listing is an auction, the buyout price must not be less than the reserve price.
+     *
+     * @param _listingId The ID of the listing to update.
+     * @param _quantityToList The new quantity of tokens to list.
+     * @param _currency The new currency for the listing.
+     * @param _reservePricePerToken The new reserve price per token.
+     * @param _buyoutPricePerToken The new buyout price per token.
+     * @param _startTime The new start time for the listing.
+     * @param _secondsUntilEndTime The new number of seconds until the end time.
+     */
     function updateListing(
         uint256 _listingId,
         uint256 _quantityToList,
+        address _currency,
         uint256 _reservePricePerToken,
         uint256 _buyoutPricePerToken,
         uint256 _startTime,
         uint256 _secondsUntilEndTime
-    ) external override onlyListingCreator(_listingId) {
+    ) onlyWhitelistedErc20s(_currency) external override onlyListingCreator(_listingId) {
         Listing memory targetListing = listings[_listingId];
         uint256 safeNewQuantity = getSafeQuantity(
             targetListing.tokenType,
@@ -302,7 +416,7 @@ contract ColorMarketplace is
                 ? targetListing.endTime
                 : newStartTime + _secondsUntilEndTime,
             quantity: safeNewQuantity,
-            currency: _currencyToAccept,
+            currency: _currency,
             reservePricePerToken: _reservePricePerToken,
             buyoutPricePerToken: _buyoutPricePerToken,
             tokenType: targetListing.tokenType,
@@ -346,9 +460,21 @@ contract ColorMarketplace is
         emit ListingUpdated(_listingId, targetListing.tokenOwner);
     }
 
+    /**
+     * @dev Cancels a direct listing on the marketplace.
+     *
+     * This function allows the creator of a direct listing to cancel it. It first checks if the listing is a direct listing,
+     * and if it is, it deletes the listing and emits a {ListingRemoved} event.
+     *
+     * Requirements:
+     * - `msg.sender` must be the creator of the listing.
+     * - The listing must be a direct listing.
+     *
+     * @param _listingId The ID of the listing to cancel.
+     */
     function cancelDirectListing(
         uint256 _listingId
-    ) external onlyListingCreator(_listingId) {
+    ) public onlyListingCreator(_listingId) {
         Listing memory targetListing = listings[_listingId];
 
         if (targetListing.listingType != ListingType.Direct) {
@@ -360,8 +486,35 @@ contract ColorMarketplace is
         emit ListingRemoved(_listingId, targetListing.tokenOwner);
     }
 
-    /* Direct listing logic */
+    /**
+     * @dev Cancels multiple direct listings on the marketplace.
+     *
+     * This function allows the caller to cancel multiple direct listings at once. It takes an array of listing IDs as input,
+     * and for each ID in the array, it calls the `cancelDirectListing` function.
+     *
+     * @param _listingIds An array of the IDs of the listings to cancel.
+     */
+    function cancelDirectListings(
+        uint256[] memory _listingIds
+    ) external {
+        for (uint256 i = 0; i < _listingIds.length; i++) {
+            cancelDirectListing(_listingIds[i]);
+        }
+    }
 
+
+    /**
+     * @dev Buys a listing on the marketplace.
+     *
+     * This function is a public wrapper for the `_buy` function. It is necessary to prevent reentry attacks,
+     * but it can still be called with bulk buys.
+     *
+     * @param _listingId The ID of the listing to buy.
+     * @param _buyFor The address to buy the listing for.
+     * @param _quantityToBuy The quantity of tokens to buy.
+     * @param _currency The currency to use for the purchase.
+     * @param _totalPrice The total price of the purchase.
+     */    
     function buy(
         uint256 _listingId,
         address _buyFor,
@@ -369,11 +522,30 @@ contract ColorMarketplace is
         address _currency,
         uint256 _totalPrice
     ) external payable override nonReentrant onlyExistingListing(_listingId) {
+        _buy(_listingId, _buyFor,_quantityToBuy, _currency,_totalPrice);
+    }
+
+    /**
+     * @dev Buys a listing on the marketplace.
+     *
+     * This function is the internal implementation of the `buy` function. It checks whether the settled total price
+     * and currency to use are correct, and if they are, it executes the sale.
+     *
+     * @param _listingId The ID of the listing to buy.
+     * @param _buyFor The address to buy the listing for.
+     * @param _quantityToBuy The quantity of tokens to buy.
+     * @param _currency The currency to use for the purchase.
+     * @param _totalPrice The total price of the purchase.
+     */
+    function _buy(
+        uint256 _listingId,
+        address _buyFor,
+        uint256 _quantityToBuy,
+        address _currency,
+        uint256 _totalPrice
+    ) internal onlyExistingListing(_listingId) {
         Listing memory targetListing = listings[_listingId];
         address payer = _msgSender();
-
-        // todo: remove this hack to ensure testing this contract only takes hard coded token
-        // address _currency = _currencyToAccept;
 
         // Check whether the settled total price and currency to use are correct.
         if (
@@ -393,6 +565,53 @@ contract ColorMarketplace is
         );
     }
 
+    /**
+     * @dev Buys multiple listings on the marketplace.
+     *
+     * This function allows the caller to buy multiple listings at once. It takes arrays of listing IDs, addresses to buy for,
+     * quantities to buy, currencies, and total prices as input, and for each index in the arrays, it calls the `_buy` function.
+     *
+     * @param _listingIds An array of the IDs of the listings to buy.
+     * @param _buyFors An array of the addresses to buy the listings for.
+     * @param _quantitiesToBuy An array of the quantities of tokens to buy.
+     * @param _currencies An array of the currencies to use for the purchases.
+     * @param _totalPrices An array of the total prices of the purchases.
+     */
+    function bulkBuy(
+        uint256[] memory _listingIds,
+        address[] memory _buyFors,
+        uint256[] memory _quantitiesToBuy,
+        address[] memory _currencies,
+        uint256[] memory _totalPrices
+    ) external payable nonReentrant  {
+        if (
+            _listingIds.length != _buyFors.length ||
+            _buyFors.length != _quantitiesToBuy.length ||
+            _quantitiesToBuy.length != _currencies.length ||
+            _currencies.length != _totalPrices.length
+        ) {
+            revert InputLengthMismatch();
+        }
+
+        for (uint256 i = 0; i < _listingIds.length; i++) {
+            _buy(_listingIds[i], _buyFors[i], _quantitiesToBuy[i], _currencies[i], _totalPrices[i]);
+        }  
+    }
+
+    /**
+     * @dev Accepts an offer for a direct listing on the marketplace.
+     *
+     * This function allows the creator of a direct listing to accept an offer for it. It first checks if the offer's currency
+     * and price per token are correct, and if the offer has not expired. If all checks pass, it deletes the offer and executes
+     * the sale.
+     *
+     * Note: This function is for direct listings only. Auctions must wait to close auction.
+     *
+     * @param _listingId The ID of the listing to accept the offer for.
+     * @param _offeror The address of the offeror.
+     * @param _currency The currency of the offer.
+     * @param _pricePerToken The price per token of the offer.
+     */    
     function acceptOffer(
         uint256 _listingId,
         address _offeror,
@@ -431,6 +650,19 @@ contract ColorMarketplace is
         );
     }
 
+    /**
+     * @dev Executes a sale on the marketplace.
+     *
+     * This function validates the sale, updates the quantity of the listing, pays out the seller, transfers the listing tokens
+     * to the buyer, and emits a {NewSale} event.
+     *
+     * @param _targetListing The listing to execute the sale for.
+     * @param _payer The address of the payer.
+     * @param _receiver The address to receive the listing tokens.
+     * @param _currency The currency of the sale.
+     * @param _currencyAmountToTransfer The amount of currency to transfer.
+     * @param _listingTokenAmountToTransfer The amount of listing tokens to transfer.
+     */
     function executeSale(
         Listing memory _targetListing,
         address _payer,
@@ -474,9 +706,19 @@ contract ColorMarketplace is
         );
     }
 
-    /* Offer and bids logic */
-
-    /// @dev Lets an account (1) make an offer to a direct listing, or (2) make a bid in an auction.
+    /**
+     * @dev Allows an account to make an offer to a direct listing or make a bid in an auction.
+     *
+     * This function first checks if the listing is active. If it is, it creates a new offer or bid. If the listing is an auction,
+     * it checks if the bid is made in the auction's desired currency and if the price per token is not zero. If the listing is a direct
+     * listing, it checks if the offer is not made directly in native tokens. If all checks pass, it handles the offer or bid.
+     *
+     * @param _listingId The ID of the listing to make the offer or bid to.
+     * @param _quantityWanted The quantity of tokens wanted.
+     * @param _currency The currency of the offer or bid.
+     * @param _pricePerToken The price per token of the offer or bid.
+     * @param _expirationTimestamp The expiration timestamp of the offer or bid.
+     */    
     function offer(
         uint256 _listingId,
         uint256 _quantityWanted,
@@ -544,6 +786,20 @@ contract ColorMarketplace is
         }
     }
 
+    /**
+     * @dev Handles an offer made to a direct listing.
+     * Validates the offer and updates the offers mapping.
+     *
+     * Emits a {NewOffer} event.
+     *
+     * Requirements:
+     * - The quantity wanted in the offer must not exceed the quantity available in the listing.
+     * - The listing must have a quantity greater than 0.
+     * - The offeror must have sufficient ERC20 balance and allowance.
+     *
+     * @param _targetListing The listing to which the offer is made.
+     * @param _newOffer The offer being made.
+     */
     function handleOffer(
         Listing memory _targetListing,
         Offer memory _newOffer
@@ -574,6 +830,20 @@ contract ColorMarketplace is
         );
     }
 
+    /**
+     * @dev Handles a bid made to an auction.
+     * Validates the bid and updates the winning bid if necessary.
+     *
+     * Emits a {NewOffer} event.
+     *
+     * Requirements:
+     * - If there's a buyout price, the incoming offer amount must be equal to or greater than the buyout price.
+     * - If there's an existing winning bid, the incoming bid amount must be bid buffer % greater.
+     * - Else, the bid amount must be at least as great as the reserve price.
+     *
+     * @param _targetListing The listing to which the bid is made.
+     * @param _incomingBid The bid being made.
+     */
     function handleBid(
         Listing memory _targetListing,
         Offer memory _incomingBid
@@ -647,6 +917,16 @@ contract ColorMarketplace is
         );
     }
 
+    /**
+     * @dev Determines if an incoming bid is a new winning bid.
+     * If there is no current winning bid, the incoming bid is a new winning bid if it is greater than or equal to the reserve amount.
+     * If there is a current winning bid, the incoming bid is a new winning bid if it is greater than the current winning bid and the difference between the incoming bid and the current winning bid is greater than or equal to the bid buffer.
+     *
+     * @param _reserveAmount The reserve amount of the auction.
+     * @param _currentWinningBidAmount The amount of the current winning bid.
+     * @param _incomingBidAmount The amount of the incoming bid.
+     * @return isValidNewBid A boolean indicating if the incoming bid is a new winning bid.
+     */
     function isNewWinningBid(
         uint256 _reserveAmount,
         uint256 _currentWinningBidAmount,
@@ -662,8 +942,20 @@ contract ColorMarketplace is
         }
     }
 
-    /* Auction sales logic */
-
+    /**
+     * @dev Closes an auction.
+     * If the auction hasn't started or doesn't have any bids, it is cancelled.
+     * If the auction has ended, it is closed for the auction creator or the bidder.
+     *
+     * Emits an {AuctionClosed} event.
+     *
+     * Requirements:
+     * - The listing must be an auction.
+     * - The auction must have ended.
+     *
+     * @param _listingId The ID of the listing.
+     * @param _closeFor The address for which to close the auction.
+     */
     function closeAuction(
         uint256 _listingId,
         address _closeFor
@@ -684,8 +976,9 @@ contract ColorMarketplace is
             // cancel auction listing owner check
             _cancelAuction(targetListing);
         } else {
-            if (targetListing.endTime >= block.timestamp) {
-                revert AuctionNotEnded();
+            // Need to ensure auction has ended before checking the timestamp, as we update the endtime if called before
+            if (!(targetListing.endTime < block.timestamp)) {
+                revert AuctionNotEnded(targetListing.endTime, block.timestamp);
             }
 
             // No `else if` to let auction close in 1 tx when targetListing.tokenOwner == targetBid.offeror.
@@ -699,6 +992,15 @@ contract ColorMarketplace is
         }
     }
 
+    /**
+     * @dev Closes an auction for the auction creator.
+     * The auction creator receives the payout amount.
+     *
+     * Emits an {AuctionClosed} event.
+     *
+     * @param _targetListing The listing of the auction.
+     * @param _winningBid The winning bid of the auction.
+     */
     function _closeAuctionForAuctionCreator(
         Listing memory _targetListing,
         Offer memory _winningBid
@@ -730,29 +1032,15 @@ contract ColorMarketplace is
         );
     }
 
-    function _cancelAuction(Listing memory _targetListing) internal {
-        if (listings[_targetListing.listingId].tokenOwner != _msgSender()) {
-            revert NotListingCreator();
-        }
-
-        delete listings[_targetListing.listingId];
-
-        transferListingTokens(
-            address(this),
-            _targetListing.tokenOwner,
-            _targetListing.quantity,
-            _targetListing
-        );
-
-        emit AuctionClosed(
-            _targetListing.listingId,
-            _msgSender(),
-            true,
-            _targetListing.tokenOwner,
-            address(0)
-        );
-    }
-
+    /**
+     * @dev Closes an auction for the bidder.
+     * The bidder receives the quantity of tokens they wanted.
+     *
+     * Emits an {AuctionClosed} event.
+     *
+     * @param _targetListing The listing of the auction.
+     * @param _winningBid The winning bid of the auction.
+     */
     function _closeAuctionForBidder(
         Listing memory _targetListing,
         Offer memory _winningBid
@@ -781,78 +1069,90 @@ contract ColorMarketplace is
         );
     }
 
-    /* Color specific market functions */
+    /**
+     * @dev Cancels an auction.
+     * The listing is deleted and the tokens are transferred back to the auction creator.
+     *
+     * Emits an {AuctionClosed} event.
+     *
+     * Requirements:
+     * - The caller must be the creator of the listing.
+     *
+     * @param _targetListing The listing of the auction.
+     */
+    function _cancelAuction(Listing memory _targetListing) internal {
+        if (listings[_targetListing.listingId].tokenOwner != _msgSender()) {
+            revert NotListingCreator();
+        }
 
-    function sweepFloor() public pure {
-        /* 1. Loop through all listings
-           2. Check if collection address is target, if not break
-           3. Check if listing is direct, if not break (check if we want to make auction bids)
-           4. --- this might have to be done off chain and realised with the bulkBuy method...
-        */
-        revert NotImplemented();
+        delete listings[_targetListing.listingId];
+
+        transferListingTokens(
+            address(this),
+            _targetListing.tokenOwner,
+            _targetListing.quantity,
+            _targetListing
+        );
+
+        emit AuctionClosed(
+            _targetListing.listingId,
+            _msgSender(),
+            true,
+            _targetListing.tokenOwner,
+            address(0)
+        );
     }
 
-    function bulkBuy() public pure {
-        revert NotImplemented();
+    /**
+     * @dev Calculates the platform fee for a given sale price.
+     * 
+     * @param salePrice The sale price.
+     * @return The platform fee.
+     */
+    function calculatePlatformFee(uint256 salePrice) public view returns (uint256) {
+        return salePrice * platformFeeBps / MAX_BPS;
     }
 
-    function bulkDelist() public pure {
-        revert NotImplemented();
-    }
-
-    /* Shared internal functions */
-
+    /**
+     * @dev Handles the payout of a transaction. It first calculates the platform fee cut from the total payout amount. 
+     * Then, it transfers the platform fee cut from the payer to the platform fee recipient. 
+     * Finally, it transfers the remaining amount (total payout amount minus the platform fee cut) from the payer to the payee.
+     *
+     * Requirements:
+     * - `_payer` must have sufficient balance in `_currencyToUse`.
+     * - `_payee` must be able to receive `_currencyToUse`.
+     *
+     * @param _payer The address of the payer.
+     * @param _payee The address of the payee.
+     * @param _currencyToUse The address of the currency to use for the transaction.
+     * @param _totalPayoutAmount The total payout amount.
+     */
     function payout(
         address _payer,
         address _payee,
         address _currencyToUse,
         uint256 _totalPayoutAmount,
-        Listing memory /* _listing */ // todo: uncomment this when royalties working
+        Listing memory /* _listing */
     ) internal {
-        uint256 platformFeeCut = (_totalPayoutAmount * platformFeeBps) /
-            MAX_BPS;
-
-        // todo: Consider royalties feature here later!!!
-
-        // uint256 royaltyCut;
-        // address royaltyRecipient;
-
-        // // Distribute royalties. See Sushiswap's https://github.com/sushiswap/shoyu/blob/master/contracts/base/BaseExchange.sol#L296
-        // try IERC2981(_listing.assetContract).royaltyInfo(_listing.tokenId, _totalPayoutAmount) returns (
-        //     address royaltyFeeRecipient,
-        //     uint256 royaltyFeeAmount
-        // ) {
-        //     if (royaltyFeeRecipient != address(0) && royaltyFeeAmount > 0) {
-        //         require(royaltyFeeAmount + platformFeeCut <= _totalPayoutAmount, "fees exceed the price");
-        //         royaltyRecipient = royaltyFeeRecipient;
-        //         royaltyCut = royaltyFeeAmount;
-        //     }
-        // } catch {}
+        uint256 platformFeeCut = calculatePlatformFee(_totalPayoutAmount);
 
         // Distribute price to token owner
-        address _nativeTokenWrapper = NATIVE_TOKEN_WRAPPER;
-
         CurrencyTransferLib.transferCurrencyWithWrapper(
             _currencyToUse,
             _payer,
             platformFeeRecipient,
             platformFeeCut,
-            _nativeTokenWrapper
+            NATIVE_TOKEN_WRAPPER
         );
-        // CurrencyTransferLib.transferCurrencyWithWrapper(
-        //     _currencyToUse,
-        //     _payer,
-        //     royaltyRecipient,
-        //     royaltyCut,
-        //     _nativeTokenWrapper
-        // );
+
+        // Distribute the rest to the payee
         CurrencyTransferLib.transferCurrencyWithWrapper(
             _currencyToUse,
             _payer,
             _payee,
             _totalPayoutAmount - (platformFeeCut),
-            _nativeTokenWrapper
-        );
+            NATIVE_TOKEN_WRAPPER
+        );        
     }
 
     function validateERC20BalAndAllowance(
@@ -869,7 +1169,52 @@ contract ColorMarketplace is
         }
     }
 
-    // todo: docstring
+    /**
+     * @dev Validates if a token is compliant with the Story Protocol.
+     * It tries to get the license token metadata for a given license token ID.
+     * If the function call is successful, it checks if the license token is transferable.
+     * If the function call reverts, it continues execution and returns true.
+     *
+     * Requirements:
+     * - The `assetContract` and `tokenId` should correspond to a valid license token ID.
+     *
+     * param: assetContract The address of the asset contract.
+     * param: tokenId The ID of the token.
+     * @return isCompliant A boolean indicating if the token is compliant with the Story Protocol.
+     * 
+     * Note: This is not being used currenty and is a theoretical function for future versions.
+     */
+    function validateStoryProtocolCompliance(
+        address /* assetContract */, 
+        uint256 /* tokenId*/ 
+        ) internal view returns (bool isCompliant) {
+
+        // todo: get the licenseTokenId from the assetContract and tokenId
+        uint256 licenseTokenId = 0; // placeholder
+
+        bool transferable = true;
+        try licenseToken.getLicenseTokenMetadata(licenseTokenId) returns (ILicenseToken.LicenseTokenMetadata memory lmt) {
+            // If the function call does not revert, it was successful to check
+            transferable = lmt.transferable;
+        } catch {
+            // If the function call reverts, continue execution
+        }
+        return transferable;
+    }
+
+    /**
+     * @dev Validates the ownership and approval of a token.
+     * If the token type is ERC1155, it checks if the token owner's balance is greater than or equal to the quantity and if the token owner has approved the market for all tokens.
+     * If the token type is ERC721, it checks if the token owner is the owner of the token and if the token owner has approved the market for all tokens or if a specific operator is approved for the token.
+     * It uses a failsafe for reverts in case of non-existent tokens.
+     *
+     * @param _tokenOwner The address of the token owner.
+     * @param _assetContract The address of the asset contract.
+     * @param _tokenId The ID of the token.
+     * @param _quantity The quantity of the token.
+     * @param _tokenType The type of the token (ERC721 or ERC1155).
+     * @return isValid A boolean indicating if the ownership and approval of the token are valid.
+     */
     function validateOwnershipAndApproval(
         address _tokenOwner,
         address _assetContract,
@@ -885,13 +1230,6 @@ contract ColorMarketplace is
                 _quantity &&
                 IERC1155(_assetContract).isApprovedForAll(_tokenOwner, market);
         } else if (_tokenType == TokenType.ERC721) {
-            // isValid =
-            //     IERC721(_assetContract).ownerOf(_tokenId) == _tokenOwner &&
-            //     (IERC721(_assetContract).getApproved(_tokenId) == market ||
-            //         IERC721(_assetContract).isApprovedForAll(
-            //             _tokenOwner,
-            //             market
-            //         ));
             address owner;
             address operator;
 
@@ -905,18 +1243,28 @@ contract ColorMarketplace is
                     operator = _operator;
                 } catch {}
             } catch {}
-
-            isValid =
-                owner == _tokenOwner &&
-                (operator == market || IERC721(_assetContract).isApprovedForAll(_tokenOwner, market));
-
+            isValid = owner == _tokenOwner && (operator == market || IERC721(_assetContract).isApprovedForAll(_tokenOwner, market));
         }
-        // if (!isValid) {
-        //     revert TokenNotValidOrApproved();
-        // }
-
     }
 
+    /**
+     * @dev Validates a direct listing sale.
+     * It checks if the listing type is direct, if a valid quantity of listed tokens is being bought, if the sale is made within the listing window, if the buyer owns and has approved sufficient currency for sale, and if the token owner owns and has approved the quantity of listing tokens from the listing.
+     * If any of these checks fail, it reverts with an appropriate error message.
+     *
+     * Requirements:
+     * - The listing type must be direct.
+     * - A valid quantity of listed tokens must be bought.
+     * - The sale must be made within the listing window.
+     * - The buyer must own and have approved sufficient currency for sale.
+     * - The token owner must own and have approved the quantity of listing tokens from the listing.
+     *
+     * @param _listing The listing to validate.
+     * @param _payer The address of the payer.
+     * @param _quantityToBuy The quantity of tokens to buy.
+     * @param _currency The currency to use for the sale.
+     * @param settledTotalPrice The total price of the sale.
+     */
     function validateDirectListingSale(
         Listing memory _listing,
         address _payer,
@@ -946,7 +1294,6 @@ contract ColorMarketplace is
         }
 
         // Check: buyer owns and has approved sufficient currency for sale.
-        // todo: This needs rethinking as Color won't want to take anything other than Eth I think?
         if (_currency == CurrencyTransferLib.NATIVE_TOKEN) {
             if (msg.value != settledTotalPrice) {
                 revert InvalidMsgValue();
@@ -968,6 +1315,19 @@ contract ColorMarketplace is
         
     }
 
+    /**
+     * @dev Transfers listing tokens from one address to another.
+     * If the token type is ERC1155, it transfers a specified quantity of tokens.
+     * If the token type is ERC721, it transfers the token.
+     *
+     * Requirements:
+     * - The `_from` address must own the tokens and have approved the contract to transfer them.
+     *
+     * @param _from The address to transfer the tokens from.
+     * @param _to The address to transfer the tokens to.
+     * @param _quantity The quantity of tokens to transfer (only applicable for ERC1155 tokens).
+     * @param _listing The listing the tokens are associated with.
+     */
     function transferListingTokens(
         address _from,
         address _to,
@@ -992,8 +1352,26 @@ contract ColorMarketplace is
         }
     }
 
-    /* Getters */
+    /**
+     * @dev Returns the winning bid for a given listing ID.
+     *
+     * @param listingId The ID of the listing.
+     * @return An Offer struct representing the winning bid.
+     */
+    function getWinningBid(uint256 listingId) external view returns (Offer memory) {
+        return winningBid[listingId];
+    }
 
+    /**
+     * @dev Returns a safe quantity for a given token type and quantity.
+     * If the quantity to check is 0, it returns 0.
+     * If the token type is ERC721, it returns 1.
+     * Otherwise, it returns the quantity to check.
+     *
+     * @param _tokenType The type of the token.
+     * @param _quantityToCheck The quantity to check.
+     * @return safeQuantity The safe quantity.
+     */
     function getSafeQuantity(
         TokenType _tokenType,
         uint256 _quantityToCheck
@@ -1007,6 +1385,15 @@ contract ColorMarketplace is
         }
     }
 
+    /**
+     * @dev Returns the token type for a given asset contract.
+     * If the asset contract supports the ERC1155 interface, it returns TokenType.ERC1155.
+     * If the asset contract supports the ERC721 interface, it returns TokenType.ERC721.
+     * Otherwise, it reverts with a TokenNotSupported error.
+     *
+     * @param _assetContract The address of the asset contract.
+     * @return tokenType The type of the token.
+     */
     function getTokenType(
         address _assetContract
     ) internal view returns (TokenType tokenType) {
@@ -1025,10 +1412,22 @@ contract ColorMarketplace is
         }
     }
 
+    /**
+     * @dev Returns the platform fee recipient and the platform fee in basis points.
+     *
+     * @return The address of the platform fee recipient and the platform fee in basis points.
+     */
     function getPlatformFeeInfo() external view returns (address, uint16) {
         return (platformFeeRecipient, uint16(platformFeeBps));
     }
 
+    /**
+     * @dev Validates an existing listing.
+     * It checks if the listing start time is in the past, if the listing end time is in the future, and if the token owner owns and has approved the quantity of listing tokens from the listing.
+     *
+     * @param _targetListing The listing to validate.
+     * @return isValid A boolean indicating if the listing is valid.
+     */
     function _validateExistingListing(Listing memory _targetListing) internal view returns (bool isValid) {
         isValid =
             _targetListing.startTime <= block.timestamp &&
@@ -1042,6 +1441,23 @@ contract ColorMarketplace is
             );
     }
 
+    /**
+     * @dev Checks if a listing is valid.
+     * It validates the listing with the given ID.
+     *
+     * @param _listingId The ID of the listing.
+     * @return isValid A boolean indicating if the listing is valid.
+     */
+    function checkListingValid(uint256 _listingId) external view returns (bool isValid) {
+        isValid = _validateExistingListing(listings[_listingId]);
+    }
+
+    /**
+     * @dev Returns all valid listings.
+     * It creates an array of all listings, counts the valid ones, and then creates a new array of valid listings.
+     *
+     * @return _validListings An array of valid listings.
+     */
     function getAllValidListings() external view returns (Listing[] memory _validListings) {
         uint256 _startId = 0;
         uint256 _endId = totalListings - 1;
@@ -1066,11 +1482,23 @@ contract ColorMarketplace is
         }
     }
 
+    /**
+     * @dev Returns a listing with a given ID.
+     *
+     * @param _listingId The ID of the listing.
+     * @return listing The listing with the given ID.
+     */
     function getListing(uint256 _listingId) external view returns (Listing memory listing) {
         listing = listings[_listingId];
     }
 
-    /* Setters */
+    /**
+     * @dev Sets the platform fee recipient and the platform fee in basis points.
+     * If the platform fee in basis points is greater than MAX_BPS, it reverts with an InvalidPlatformFeeBps error.
+     *
+     * @param _platformFeeRecipient The address of the platform fee recipient.
+     * @param _platformFeeBps The platform fee in basis points.
+     */
     function setPlatformFeeInfo(
         address _platformFeeRecipient,
         uint256 _platformFeeBps
@@ -1085,6 +1513,13 @@ contract ColorMarketplace is
         emit PlatformFeeInfoUpdated(_platformFeeRecipient, _platformFeeBps);
     }
 
+    /**
+     * @dev Sets the auction time buffer and the bid buffer in basis points.
+     * If the bid buffer in basis points is greater than or equal to MAX_BPS, it reverts with an InvalidBPS error.
+     *
+     * @param _timeBuffer The auction time buffer.
+     * @param _bidBufferBps The bid buffer in basis points.
+     */
     function setAuctionBuffers(
         uint256 _timeBuffer,
         uint256 _bidBufferBps
@@ -1100,9 +1535,36 @@ contract ColorMarketplace is
         emit AuctionBuffersUpdated(_timeBuffer, _bidBufferBps);
     }
 
-    /* Misc */
+    /**
+     * @dev Adds a token to the ERC20 whitelist.
+     * If the token's total supply is 0 or less, it reverts with an InvalidERC20 error.
+     *
+     * @param tokenAddress The address of the token.
+     */
+    function erc20WhiteListAdd(address tokenAddress) external onlyRole(DEFAULT_ADMIN_ROLE)  {
+        IERC20 token = IERC20(tokenAddress);
+        if (token.totalSupply() <= 0) {
+            revert InvalidERC20();
+        }
+        
+        erc20Whitelist[tokenAddress] = true;
+    }
 
-    /// @dev Overrides the default _msgSender() function to use the ERC2771Context implementation.
+    /**
+     * @dev Removes a token from the ERC20 whitelist.
+     *
+     * @param tokenAddress The address of the token.
+     */
+    function erc20WhiteListRemove(address tokenAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        erc20Whitelist[tokenAddress] = false;
+    }
+
+    /**
+     * @dev Overrides the default _msgSender() function to use the ERC2771Context implementation.
+     * It returns the address of the sender of the message.
+     *
+     * @return sender The address of the sender of the message.
+     */    
     function _msgSender()
         internal
         view
@@ -1112,7 +1574,12 @@ contract ColorMarketplace is
         return ERC2771Context._msgSender();
     }
 
-    /// @dev Overrides the default _msgData() function to use the ERC2771Context implementation.
+    /**
+     * @dev Overrides the default _msgData() function to use the ERC2771Context implementation.
+     * It returns the calldata of the message.
+     *
+     * @return A bytes calldata representing the calldata of the message.
+     */
     function _msgData()
         internal
         view
@@ -1122,7 +1589,12 @@ contract ColorMarketplace is
         return ERC2771Context._msgData();
     }
 
-    /// @dev Overrides the default _contextContract() function to use the ERC2771Context implementation.
+    /**
+     * @dev Overrides the default _contextContract() function to use the ERC2771Context implementation.
+     * It returns the length of the context suffix.
+     *
+     * @return The length of the context suffix.
+     */
     function _contextSuffixLength()
         internal
         view
