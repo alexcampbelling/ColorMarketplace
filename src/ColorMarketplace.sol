@@ -281,7 +281,7 @@ contract ColorMarketplace is
 
         if (startTime < block.timestamp) {
             // do not allow listing to start in the past (1 hour buffer)
-            if (block.timestamp - startTime < 1 hours) {
+            if (block.timestamp - startTime >= 1 hours) {
                 revert InvalidStartTime();
             }
             startTime = block.timestamp;
