@@ -17,7 +17,7 @@ contract DirectSalesTests is TestHelpers {
     }
 
     function test_listing_burned_success() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -41,7 +41,7 @@ contract DirectSalesTests is TestHelpers {
     /* Create Listing tests */
 
     function test_createListing() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -50,7 +50,7 @@ contract DirectSalesTests is TestHelpers {
 
     function test_createListing_721_success() public {
 
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -75,7 +75,7 @@ contract DirectSalesTests is TestHelpers {
     }
 
     function test_revert_createListing_NotDirectListing() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
         
         // Spoof the type
         listingParams.listingType = IColorMarketplace.ListingType.Auction;
@@ -108,7 +108,7 @@ contract DirectSalesTests is TestHelpers {
 
     // Try to buy more tokens than available (needs correct price included for this failure)
     function test_revert_createListing_InvalidTokenAmount() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -135,7 +135,7 @@ contract DirectSalesTests is TestHelpers {
     }
 
     function test_revert_createListing_NotWithinSaleWindow() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -168,7 +168,7 @@ contract DirectSalesTests is TestHelpers {
         // todo: move to testhelpers
         address native = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         // Spoof the currency address to use native L1 currency
         listingParams.currency = native;
@@ -197,7 +197,7 @@ contract DirectSalesTests is TestHelpers {
 
     // This revert is for approval and ownership check for tokens when listing
     function test_revert_createListing_TokenNotValidOrApproved() public {
-        // IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        // IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         // Sample listing parameters.
         address assetContract = address(erc721);
@@ -240,7 +240,7 @@ contract DirectSalesTests is TestHelpers {
 
     // Here we don't approve the marketplace to transfer the payment currency
     function test_revert_createListing_InsufficientBalanceOrAllowance() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -273,7 +273,7 @@ contract DirectSalesTests is TestHelpers {
 
     // Here we buy a listing for the exact listing price
     function test_buyDirect_erc20_success() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -316,7 +316,7 @@ contract DirectSalesTests is TestHelpers {
     // Here we give an offer to a listing (this means the listing, although a direct sale can receive offers lower 
     // than the listing amount and the seller can consider then accept them)
     function test_bidListing_success() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);
