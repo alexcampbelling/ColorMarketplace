@@ -43,7 +43,9 @@ library CurrencyTransferLib {
         address _from,
         address _to,
         uint256 _amount,
-        address _nativeTokenWrapper
+        address _nativeTokenWrapper,
+        bool useMsgValue,
+        uint256 customValue
     ) internal {
         if (_amount == 0) {
             return;
@@ -60,9 +62,16 @@ library CurrencyTransferLib {
                 );
             } else if (_to == address(this)) {
                 // store native currency in weth
-                if (_amount != msg.value) {
+                if (useMsgValue && _amount != msg.value) {
                     revert CurrencyTransferLibMismatchedValue(
                         msg.value,
+                        _amount
+                    );
+                } else if (!useMsgValue && _amount > customValue) {
+                    // This edgecase is for when msg.value is over the required amount on purpose
+                    // The main case here is bulk buying with native currencies.
+                    revert CurrencyTransferLibMismatchedValue(
+                        customValue,
                         _amount
                     );
                 }

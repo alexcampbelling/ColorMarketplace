@@ -12,4 +12,4 @@ _First run `cp .env.example .env` and fill out the env vars you may need!!!_
 
 `forge build`: Compiles all contracts needed
 `forge test`: Runs all tests (add `-vvvv` for traces)
-`forge script ColorMarketPlaceDeploy --rpc-url $SEPOLIA_RPC_URL --verify --etherscan-api-key $ETHERSCAN_API_KEY --broadcast`: Deply script for Sepolia, needing the correct environment variables!
+`forge script ColorMarketPlaceDeploy --rpc-url $SEPOLIA_RPC_URL --verify --etherscan-api-key $ETHERSCAN_API_KEY --broadcast`: Deploy script for Sepolia, needing the correct environment variables!

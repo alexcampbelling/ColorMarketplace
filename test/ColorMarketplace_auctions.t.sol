@@ -13,7 +13,7 @@ import { console } from "forge-std/Test.sol";
 contract AuctionsTests is TestHelpers {
 
     function createBasicAuction() private returns (IColorMarketplace.ListingParameters memory) {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicAuctionListing();
+        IColorMarketplace.ListingParameters memory listingParams = getBasic721AuctionListing();
         vm.prank(seller);
         vm.expectEmit();
         emit IColorMarketplace.ListingAdded(
@@ -551,7 +551,7 @@ contract AuctionsTests is TestHelpers {
         } catch (bytes memory lowLevelData) {
             // This block will be executed if the call reverts without a reason
             // note: Couldn't get expectEvent to work with the "ERC721InsufficientApproval" error so I hardcoded the revert memory :-)
-            assertEq(lowLevelData, hex"177e802f0000000000000000000000005991a2df15a8f6a256d3ec51e99254cd3fb576a90000000000000000000000000000000000000000000000000000000000000000");
+            assertEq(lowLevelData, hex"177e802f000000000000000000000000c7183455a4c133ae270771860664b6b7ec320bb10000000000000000000000000000000000000000000000000000000000000000");
         }
     }
     

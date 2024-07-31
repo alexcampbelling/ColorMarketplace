@@ -16,7 +16,7 @@ contract ErrorsTests is TestHelpers {
         MockERC20 token = new MockERC20();
 
         // Make listing
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
         listingParams.currency = address(token);
 
         // Expect the error
@@ -31,7 +31,7 @@ contract ErrorsTests is TestHelpers {
     function test_updateListing_TokenNotAccepted_error() public {
         
         // Make listing
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         vm.prank(seller);
         color.createListing(listingParams);

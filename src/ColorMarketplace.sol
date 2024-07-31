@@ -3,7 +3,7 @@
 pragma solidity ^0.8.25;
 
 /**
- * @title Color Marketplace (v1.0)
+ * @title Color Marketplace (v1.2)
  * @author alexcampbelling
  * @note: Test coverage is not extremely thorough, 
  */
@@ -102,7 +102,7 @@ contract ColorMarketplace is
      */
     modifier onlyExistingListing(uint256 _listingId) {
         if (listings[_listingId].assetContract == address(0)) {
-            revert DoesNotExist();
+            revert ListingDoesNotExist();
         }
         _;
     }
@@ -502,6 +502,216 @@ contract ColorMarketplace is
         }
     }
 
+    function validateCommonSale(
+        Listing memory _listing,
+        address _payer,
+        uint256 _quantityToBuy,
+        address _currency,
+        uint256 settledTotalPrice
+    ) internal {
+        // Check whether a valid quantity of listed tokens is being bought.
+        if (
+            _listing.quantity <= 0 ||
+            _quantityToBuy <= 0 ||
+            _quantityToBuy > _listing.quantity
+        ) {
+            revert InvalidTokenAmount();
+        }
+
+        // Check: buyer owns and has approved sufficient currency for sale.
+        if (_currency == CurrencyTransferLib.NATIVE_TOKEN) {
+            if (msg.value != settledTotalPrice) {
+                revert InvalidMsgValue();
+            }
+        } else {
+            validateERC20BalAndAllowance(_payer, _currency, settledTotalPrice);
+        }
+
+        // Check whether token owner owns and has approved `quantityToBuy` amount of listing tokens from the listing.
+        if (!validateOwnershipAndApproval(
+            _listing.tokenOwner,
+            _listing.assetContract,
+            _listing.tokenId,
+            _quantityToBuy,
+            _listing.tokenType
+        )) {
+            revert TokenNotValidOrApproved();
+        }
+    }
+
+    function validateDirectListingSale(
+        Listing memory _listing,
+        address _payer,
+        uint256 _quantityToBuy,
+        address _currency,
+        uint256 settledTotalPrice
+    ) internal {
+        if (_listing.listingType != ListingType.Direct) {
+            revert NotDirectListing();
+        }
+
+        // Check if sale is made within the listing window.
+        if (
+            block.timestamp >= _listing.endTime ||
+            block.timestamp <= _listing.startTime
+        ) {
+            revert NotWithinSaleWindow();
+        }
+
+        // Perform common validations
+        validateCommonSale(_listing, _payer, _quantityToBuy, _currency, settledTotalPrice);
+    }
+
+    // todo: enable this code via removing checks in handling offers
+    // function validateAuctionSale(
+    //     Listing memory _listing,
+    //     address _payer,
+    //     uint256 _quantityToBuy,
+    //     address _currency,
+    //     uint256 settledTotalPrice
+    // ) internal {
+    //     if (_listing.listingType != ListingType.Auction) {
+    //         revert NotAuctionListing();
+    //     }
+
+    //     // Check if the auction is still active.
+    //     if (block.timestamp >= _listing.endTime) {
+    //         revert AuctionEnded();
+    //     }
+
+    //     // Check if the bid is higher than the current highest bid.
+    //     Offer memory currentHighestBid = winningBid[_listing.listingId];
+    //     if (settledTotalPrice <= currentHighestBid.pricePerToken * _quantityToBuy) {
+    //         revert BidTooLow();
+    //     }
+
+    //     // Perform common validations
+    //     validateCommonSale(_listing, _payer, _quantityToBuy, _currency, settledTotalPrice);
+    // }
+
+    function validateERC20BalAndAllowance(
+        address _addrToCheck,
+        address _currency,
+        uint256 _currencyAmountToCheckAgainst
+    ) internal view {
+        uint256 balance = IERC20(_currency).balanceOf(_addrToCheck);
+        uint256 allowance = IERC20(_currency).allowance(_addrToCheck, address(this));
+        bool isBalanceInsufficient = balance < _currencyAmountToCheckAgainst;
+        bool isAllowanceInsufficient = allowance < _currencyAmountToCheckAgainst;
+        if (isBalanceInsufficient || isAllowanceInsufficient) {
+            revert InsufficientBalanceOrAllowance();
+        }
+    }
+
+    struct CurrencyTotal {
+        address currency;
+        uint256 totalPrice;
+    }
+
+    function validateBulkBuy(
+        uint256[] memory _listingIds,
+        address _payer,
+        uint256[] memory _quantitiesToBuy,
+        address[] memory _currencies,
+        uint256[] memory _totalPrices
+    ) internal view {
+        uint256 totalNativeValue = 0;
+
+        CurrencyTotal[] memory currencyTotals = new CurrencyTotal[](_listingIds.length);
+        uint256 uniqueCurrencyCount = 0;
+
+        // Iterate over each listing
+        for (uint256 i = 0; i < _listingIds.length; i++) {
+            // // Ensure the listing exists
+            if (listings[_listingIds[i]].assetContract == address(0)) {
+                revert ListingDoesNotExist();
+            }
+
+            // Retrieve the listing from storage
+            Listing memory listing = listings[_listingIds[i]];
+
+            // Check if the listing is an auction and if the offer meets the buyout price
+            if (listing.listingType == ListingType.Auction) {
+                uint256 offerAmount = _totalPrices[i] / _quantitiesToBuy[i];
+                if (offerAmount < listing.buyoutPricePerToken) {
+                    revert OfferDoesNotMeetBuyoutPrice();
+                }
+            }
+            
+            // Accumulate total prices per currency
+            bool found = false;
+            for (uint256 j = 0; j < currencyTotals.length; j++) {
+                if (currencyTotals[j].currency == _currencies[i]) {
+                    currencyTotals[j].totalPrice += _totalPrices[i];
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                currencyTotals[i] = CurrencyTotal(_currencies[i], _totalPrices[i]);
+                uniqueCurrencyCount++;
+            }
+            
+            if (_currencies[i] == CurrencyTransferLib.NATIVE_TOKEN) {
+                totalNativeValue += _totalPrices[i];
+            }
+        }
+
+        // Validate total native token value
+        if (msg.value != totalNativeValue) {
+            revert InvalidMsgValue();
+        }
+
+        // Validate total ERC20 token values
+        for (uint256 i = 0; i < uniqueCurrencyCount; i++) {
+            if (currencyTotals[i].currency != CurrencyTransferLib.NATIVE_TOKEN) {
+                validateERC20BalAndAllowance(_payer, currencyTotals[i].currency, currencyTotals[i].totalPrice);
+            }
+        }
+    }
+
+    function executeDirectSale(
+        Listing memory _targetListing,
+        address _payer,
+        address _receiver,
+        address _currency,
+        uint256 _currencyAmountToTransfer,
+        uint256 _listingTokenAmountToTransfer
+    ) internal {
+        // Notes: 
+        // - Must validate before calling this function
+        // - This only works for direct listings
+
+        // 1. Update quantities and listing
+        _targetListing.quantity -= _listingTokenAmountToTransfer;
+        listings[_targetListing.listingId] = _targetListing;
+
+        // 2. Payout transaction with fees
+        payout(
+            _payer,
+            _targetListing.tokenOwner,
+            _currency,
+            _currencyAmountToTransfer,
+            _targetListing
+        );
+
+        // 3. Transfer tokens
+        transferListingTokens(
+            _targetListing.tokenOwner,
+            _receiver,
+            _listingTokenAmountToTransfer,
+            _targetListing
+        );
+
+        emit NewSale(
+            _targetListing.listingId,
+            _targetListing.assetContract,
+            _targetListing.tokenOwner,
+            _receiver,
+            _listingTokenAmountToTransfer,
+            _currencyAmountToTransfer
+        );
+    }
 
     /**
      * @dev Buys a listing on the marketplace.
@@ -521,7 +731,7 @@ contract ColorMarketplace is
         uint256 _quantityToBuy,
         address _currency,
         uint256 _totalPrice
-    ) external payable override nonReentrant onlyExistingListing(_listingId) {
+    ) external payable nonReentrant onlyExistingListing(_listingId) {
         _buy(_listingId, _buyFor,_quantityToBuy, _currency,_totalPrice);
     }
 
@@ -543,7 +753,7 @@ contract ColorMarketplace is
         uint256 _quantityToBuy,
         address _currency,
         uint256 _totalPrice
-    ) internal onlyExistingListing(_listingId) {
+    ) internal {
         Listing memory targetListing = listings[_listingId];
         address payer = _msgSender();
 
@@ -555,7 +765,16 @@ contract ColorMarketplace is
             revert InvalidTotalPrice();
         }
 
-        executeSale(
+        // Validate sale here now before executing transaction
+        validateDirectListingSale(
+            targetListing,
+            payer,
+            _quantityToBuy,
+            _currency,
+            targetListing.buyoutPricePerToken * _quantityToBuy
+        );
+
+        executeDirectSale(
             targetListing,
             payer,
             _buyFor,
@@ -565,38 +784,52 @@ contract ColorMarketplace is
         );
     }
 
-    /**
-     * @dev Buys multiple listings on the marketplace.
-     *
-     * This function allows the caller to buy multiple listings at once. It takes arrays of listing IDs, addresses to buy for,
-     * quantities to buy, currencies, and total prices as input, and for each index in the arrays, it calls the `_buy` function.
-     *
-     * @param _listingIds An array of the IDs of the listings to buy.
-     * @param _buyFors An array of the addresses to buy the listings for.
-     * @param _quantitiesToBuy An array of the quantities of tokens to buy.
-     * @param _currencies An array of the currencies to use for the purchases.
-     * @param _totalPrices An array of the total prices of the purchases.
-     */
     function bulkBuy(
         uint256[] memory _listingIds,
-        address[] memory _buyFors,
+        address[] memory _buyers,
         uint256[] memory _quantitiesToBuy,
         address[] memory _currencies,
         uint256[] memory _totalPrices
-    ) external payable nonReentrant  {
-        if (
-            _listingIds.length != _buyFors.length ||
-            _buyFors.length != _quantitiesToBuy.length ||
-            _quantitiesToBuy.length != _currencies.length ||
-            _currencies.length != _totalPrices.length
-        ) {
-            revert InputLengthMismatch();
-        }
+    ) external payable nonReentrant {
+        address payer = _msgSender();
+        validateBulkBuy(_listingIds, payer, _quantitiesToBuy, _currencies, _totalPrices);
+        uint256 remainingValue = msg.value;
 
         for (uint256 i = 0; i < _listingIds.length; i++) {
-            _buy(_listingIds[i], _buyFors[i], _quantitiesToBuy[i], _currencies[i], _totalPrices[i]);
-        }  
+
+            Listing memory listing = listings[_listingIds[i]];
+
+            // Close out auction for the buyer
+            if (listing.listingType == ListingType.Auction) {
+                uint256 offerAmount = _totalPrices[i] / _quantitiesToBuy[i];
+                Offer memory newOffer = Offer({
+                    listingId: _listingIds[i],
+                    offeror: payer,
+                    quantityWanted: _quantitiesToBuy[i],
+                    currency: _currencies[i],
+                    pricePerToken: offerAmount,
+                    expirationTimestamp: block.timestamp // Assuming immediate execution
+                });
+                handleBid(listing, newOffer, false, remainingValue);
+            } else {
+                executeDirectSale(
+                    listing,
+                    payer,
+                    _buyers[i],
+                    _currencies[i],
+                    _totalPrices[i],
+                    _quantitiesToBuy[i]
+                );
+                
+            }
+
+            // Reduce a running count of remaining native value to ensure no overpayment for bulk buying auctions
+            if (_currencies[i] == CurrencyTransferLib.NATIVE_TOKEN) {
+                remainingValue -= _totalPrices[i];
+            }
+        }
     }
+
 
     /**
      * @dev Accepts an offer for a direct listing on the marketplace.
@@ -640,69 +873,21 @@ contract ColorMarketplace is
 
         delete offers[_listingId][_offeror];
 
-        executeSale(
+        validateDirectListingSale(
+            targetListing,
+            _offeror,
+            targetOffer.quantityWanted,
+            targetOffer.currency,
+            targetOffer.pricePerToken * targetOffer.quantityWanted
+        );
+
+        executeDirectSale(
             targetListing,
             _offeror,
             _offeror,
             targetOffer.currency,
             targetOffer.pricePerToken * targetOffer.quantityWanted,
             targetOffer.quantityWanted
-        );
-    }
-
-    /**
-     * @dev Executes a sale on the marketplace.
-     *
-     * This function validates the sale, updates the quantity of the listing, pays out the seller, transfers the listing tokens
-     * to the buyer, and emits a {NewSale} event.
-     *
-     * @param _targetListing The listing to execute the sale for.
-     * @param _payer The address of the payer.
-     * @param _receiver The address to receive the listing tokens.
-     * @param _currency The currency of the sale.
-     * @param _currencyAmountToTransfer The amount of currency to transfer.
-     * @param _listingTokenAmountToTransfer The amount of listing tokens to transfer.
-     */
-    function executeSale(
-        Listing memory _targetListing,
-        address _payer,
-        address _receiver,
-        address _currency,
-        uint256 _currencyAmountToTransfer,
-        uint256 _listingTokenAmountToTransfer
-    ) internal {
-        validateDirectListingSale(
-            _targetListing,
-            _payer,
-            _listingTokenAmountToTransfer,
-            _currency,
-            _currencyAmountToTransfer
-        );
-
-        _targetListing.quantity -= _listingTokenAmountToTransfer;
-        listings[_targetListing.listingId] = _targetListing;
-
-        payout(
-            _payer,
-            _targetListing.tokenOwner,
-            _currency,
-            _currencyAmountToTransfer,
-            _targetListing
-        );
-        transferListingTokens(
-            _targetListing.tokenOwner,
-            _receiver,
-            _listingTokenAmountToTransfer,
-            _targetListing
-        );
-
-        emit NewSale(
-            _targetListing.listingId,
-            _targetListing.assetContract,
-            _targetListing.tokenOwner,
-            _receiver,
-            _listingTokenAmountToTransfer,
-            _currencyAmountToTransfer
         );
     }
 
@@ -766,7 +951,8 @@ contract ColorMarketplace is
                 targetListing.quantity
             );
 
-            handleBid(targetListing, newOffer);
+            handleBid(targetListing, newOffer, true, 0);
+
         } else if (targetListing.listingType == ListingType.Direct) {
             // Prevent potentially lost/locked native token.
             if (msg.value != 0) {
@@ -846,7 +1032,9 @@ contract ColorMarketplace is
      */
     function handleBid(
         Listing memory _targetListing,
-        Offer memory _incomingBid
+        Offer memory _incomingBid,
+        bool useMsgValue,
+        uint256 _customValue
     ) internal {
         Offer memory currentWinningBid = winningBid[_targetListing.listingId];
         uint256 currentOfferAmount = currentWinningBid.pricePerToken *
@@ -863,10 +1051,8 @@ contract ColorMarketplace is
         ) {
             _closeAuctionForBidder(_targetListing, _incomingBid);
         } else {
-            /**
-             *      If there's an existng winning bid, incoming bid amount must be bid buffer % greater.
-             *      Else, bid amount must be at least as great as reserve price
-             */
+            // If there's an existing winning bid, incoming bid amount must be bid buffer % greater.
+            // Else, bid amount must be at least as great as reserve price
             if (
                 !isNewWinningBid(
                     _targetListing.reservePricePerToken *
@@ -894,7 +1080,9 @@ contract ColorMarketplace is
                 address(this),
                 currentWinningBid.offeror,
                 currentOfferAmount,
-                _nativeTokenWrapper
+                _nativeTokenWrapper,
+                true,
+                0
             );
         }
 
@@ -904,7 +1092,9 @@ contract ColorMarketplace is
             _incomingBid.offeror,
             address(this),
             incomingOfferAmount,
-            _nativeTokenWrapper
+            _nativeTokenWrapper,
+            useMsgValue,
+            _customValue
         );
 
         emit NewOffer(
@@ -1142,7 +1332,9 @@ contract ColorMarketplace is
             _payer,
             platformFeeRecipient,
             platformFeeCut,
-            NATIVE_TOKEN_WRAPPER
+            NATIVE_TOKEN_WRAPPER,
+            true,
+            0
         );
 
         // Distribute the rest to the payee
@@ -1151,22 +1343,10 @@ contract ColorMarketplace is
             _payer,
             _payee,
             _totalPayoutAmount - (platformFeeCut),
-            NATIVE_TOKEN_WRAPPER
+            NATIVE_TOKEN_WRAPPER,
+            true,
+            0
         );        
-    }
-
-    function validateERC20BalAndAllowance(
-        address _addrToCheck,
-        address _currency,
-        uint256 _currencyAmountToCheckAgainst
-    ) internal view {
-        uint256 balance = IERC20(_currency).balanceOf(_addrToCheck);
-        uint256 allowance = IERC20(_currency).allowance(_addrToCheck, address(this));
-        bool isBalanceInsufficient = balance < _currencyAmountToCheckAgainst;
-        bool isAllowanceInsufficient = allowance < _currencyAmountToCheckAgainst;
-        if (isBalanceInsufficient || isAllowanceInsufficient) {
-            revert InsufficientBalanceOrAllowance();
-        }
     }
 
     /**
@@ -1247,73 +1427,7 @@ contract ColorMarketplace is
         }
     }
 
-    /**
-     * @dev Validates a direct listing sale.
-     * It checks if the listing type is direct, if a valid quantity of listed tokens is being bought, if the sale is made within the listing window, if the buyer owns and has approved sufficient currency for sale, and if the token owner owns and has approved the quantity of listing tokens from the listing.
-     * If any of these checks fail, it reverts with an appropriate error message.
-     *
-     * Requirements:
-     * - The listing type must be direct.
-     * - A valid quantity of listed tokens must be bought.
-     * - The sale must be made within the listing window.
-     * - The buyer must own and have approved sufficient currency for sale.
-     * - The token owner must own and have approved the quantity of listing tokens from the listing.
-     *
-     * @param _listing The listing to validate.
-     * @param _payer The address of the payer.
-     * @param _quantityToBuy The quantity of tokens to buy.
-     * @param _currency The currency to use for the sale.
-     * @param settledTotalPrice The total price of the sale.
-     */
-    function validateDirectListingSale(
-        Listing memory _listing,
-        address _payer,
-        uint256 _quantityToBuy,
-        address _currency,
-        uint256 settledTotalPrice
-    ) internal {
-        if (_listing.listingType != ListingType.Direct) {
-            revert NotDirectListing();
-        }
 
-        // Check whether a valid quantity of listed tokens is being bought.
-        if (
-            _listing.quantity <= 0 ||
-            _quantityToBuy <= 0 ||
-            _quantityToBuy > _listing.quantity
-        ) {
-            revert InvalidTokenAmount();
-        }
-
-        // Check if sale is made within the listing window.
-        if (
-            block.timestamp >= _listing.endTime ||
-            block.timestamp <= _listing.startTime
-        ) {
-            revert NotWithinSaleWindow();
-        }
-
-        // Check: buyer owns and has approved sufficient currency for sale.
-        if (_currency == CurrencyTransferLib.NATIVE_TOKEN) {
-            if (msg.value != settledTotalPrice) {
-                revert InvalidMsgValue();
-            }
-        } else {
-            validateERC20BalAndAllowance(_payer, _currency, settledTotalPrice);
-        }
-
-        // Check whether token owner owns and has approved `quantityToBuy` amount of listing tokens from the listing.
-        if (!validateOwnershipAndApproval(
-            _listing.tokenOwner,
-            _listing.assetContract,
-            _listing.tokenId,
-            _quantityToBuy,
-            _listing.tokenType
-        )) {
-            revert TokenNotValidOrApproved();
-        }
-        
-    }
 
     /**
      * @dev Transfers listing tokens from one address to another.

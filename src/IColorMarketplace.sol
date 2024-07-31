@@ -16,6 +16,11 @@ interface IColorMarketplace {
         Auction
     }
 
+    enum ListingStatus { 
+        Active, 
+        Completed 
+    }
+
     /* Structs */
 
     struct ListingParameters {
@@ -107,11 +112,11 @@ interface IColorMarketplace {
     );
 
     event AuctionBuffersUpdated(uint256 timeBuffer, uint256 bidBufferBps);
-
+    
     /* Errors */
 
     error NotListingOwner();
-    error DoesNotExist();
+    error ListingDoesNotExist();
     error TokenNotSupported();
     error InvalidQuantity();
     error InvalidStartTime();
@@ -148,6 +153,12 @@ interface IColorMarketplace {
     error TokenNotAccepted();
     error InputLengthMismatch();
     error NotStoryCompliant();
+    error InvalidListingType();
+    error OfferDoesNotMeetBuyoutPrice();
+    error BuyoutPriceNotMet();
+    error NotAuctionListing();
+    error AuctionEnded();
+    error BidTooLow();
 
     /* Functions */
 
@@ -163,13 +174,13 @@ interface IColorMarketplace {
         uint256 _secondsUntilEndTime
     ) external;
 
-    function buy(
-        uint256 _listingId,
-        address _buyFor,
-        uint256 _quantity,
-        address _currency,
-        uint256 _totalPrice
-    ) external payable;
+    // function buy(
+    //     uint256 _listingId,
+    //     address _buyFor,
+    //     uint256 _quantity,
+    //     address _currency,
+    //     uint256 _totalPrice
+    // ) external payable;
 
     function closeAuction(uint256 _listingId, address _closeFor) external;
 
