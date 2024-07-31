@@ -174,13 +174,13 @@ interface IColorMarketplace {
         uint256 _secondsUntilEndTime
     ) external;
 
-    // function buy(
-    //     uint256 _listingId,
-    //     address _buyFor,
-    //     uint256 _quantity,
-    //     address _currency,
-    //     uint256 _totalPrice
-    // ) external payable;
+    function buy(
+        uint256 _listingId,
+        address _buyFor,
+        uint256 _quantity,
+        address _currency,
+        uint256 _totalPrice
+    ) external payable;
 
     function closeAuction(uint256 _listingId, address _closeFor) external;
 
