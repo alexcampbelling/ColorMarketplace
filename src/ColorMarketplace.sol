@@ -262,20 +262,20 @@ contract ColorMarketplace is
         listings[listingId] = newListing;
 
         // Tokens listed for sale in an auction are escrowed in Marketplace.
-        if (newListing.listingType == ListingType.Auction) {
-            if (
-                newListing.buyoutPrice != 0 &&
-                newListing.buyoutPrice < newListing.reservePrice
-            ) {
-                revert InvalidPrice();
-            }
-            // todo: transferListingTokens -> pure transfer (check this later)
-            IERC721(newListing.assetContract).safeTransferFrom(
-                tokenOwner,
-                address(this),
-                newListing.tokenId
-            );
-        }
+        // if (newListing.listingType == ListingType.Auction) {
+        //     if (
+        //         newListing.buyoutPrice != 0 &&
+        //         newListing.buyoutPrice < newListing.reservePrice
+        //     ) {
+        //         revert InvalidPrice();
+        //     }
+        //     // todo: transferListingTokens -> pure transfer (check this later)
+        //     IERC721(newListing.assetContract).safeTransferFrom(
+        //         tokenOwner,
+        //         address(this),
+        //         newListing.tokenId
+        //     );
+        // }
 
         emit ListingAdded(
             listingId,
@@ -305,6 +305,7 @@ contract ColorMarketplace is
      * @param _startTime The new start time for the listing.
      * @param _secondsUntilEndTime The new number of seconds until the end time.
      */
+    // todo alex: remove auction checks here, check updte direct listing logic tests still pass
     function updateListing(
         uint256 _listingId,
         address _currency,
@@ -314,7 +315,7 @@ contract ColorMarketplace is
         uint256 _secondsUntilEndTime
     ) onlyWhitelistedErc20s(_currency) external override onlyListingCreator(_listingId) {
         Listing memory targetListing = listings[_listingId];
-        bool isAuction = targetListing.listingType == ListingType.Auction;
+        // bool isAuction = targetListing.listingType == ListingType.Auction;
 
         // Todo alex: test for this
         if (targetListing.status != ListingStatus.Open) {
@@ -322,18 +323,18 @@ contract ColorMarketplace is
         }
 
         // Can only edit auction listing before it starts.
-        if (isAuction) {
-            if (block.timestamp >= targetListing.startTime) {
-                revert ListingAlreadyStarted();
-            }
+        // if (isAuction) {
+        //     if (block.timestamp >= targetListing.startTime) {
+        //         revert ListingAlreadyStarted();
+        //     }
 
-            if (
-                _buyoutPrice != 0 &&
-                _buyoutPrice < _reservePrice
-            ) {
-                revert InvalidPrice();
-            }
-        }
+        //     if (
+        //         _buyoutPrice != 0 &&
+        //         _buyoutPrice < _reservePrice
+        //     ) {
+        //         revert InvalidPrice();
+        //     }
+        // }
 
         if (_startTime < block.timestamp) {
             // do not allow listing to start in the past (1 hour buffer)
@@ -359,7 +360,7 @@ contract ColorMarketplace is
             currency: _currency,
             reservePrice: _reservePrice,
             buyoutPrice: _buyoutPrice,
-            listingType: targetListing.listingType,
+            listingType: targetListing.listingType, // todo alex: remove this when ready
             status: ListingStatus.Open
         });
 
@@ -372,10 +373,10 @@ contract ColorMarketplace is
             revert TokenNotValidOrApproved();
         }
 
-        // todo alex: check on this. maybe make a test specifically for this.
-        if (isAuction && IERC721(targetListing.assetContract).ownerOf(targetListing.tokenId) == address(this)) {
-            revert NotInEscrow();
-        }
+        // todo alex: remove auction logic
+        // if (isAuction && IERC721(targetListing.assetContract).ownerOf(targetListing.tokenId) == address(this)) {
+        //     revert NotInEscrow();
+        // }
 
         emit ListingUpdated(_listingId, targetListing.tokenOwner);
     }
@@ -398,9 +399,9 @@ contract ColorMarketplace is
         Listing memory targetListing = listings[_listingId];
 
         // todo alex: remove when removing audits
-        if (targetListing.listingType != ListingType.Direct) {
-            revert NotDirectListing();
-        }
+        // if (targetListing.listingType != ListingType.Direct) {
+        //     revert NotDirectListing();
+        // }
 
         if (targetListing.status != ListingStatus.Open) {
             revert ListingNotOpen();
@@ -459,12 +460,13 @@ contract ColorMarketplace is
         address _currency,
         uint256 settledTotalPrice
     ) internal {
-        // Remove this once we only offer direct sales
-        if (_listing.listingType != ListingType.Direct) {
-            revert NotDirectListing();
-        }
+        // todo alex: Remove this once we only offer direct sales
+        // if (_listing.listingType != ListingType.Direct) {
+        //     revert NotDirectListing();
+        // }
 
         // Check if sale is made within the listing window.
+        // todo alex: check for listing status is open here too, check elsewhere this style check is being done too
         if (
             block.timestamp >= _listing.endTime ||
             block.timestamp <= _listing.startTime
@@ -546,14 +548,14 @@ contract ColorMarketplace is
             }
 
             // Retrieve the listing from storage
-            Listing memory listing = listings[_listingIds[i]];
+            // Listing memory listing = listings[_listingIds[i]];
 
             // Check if the listing is an auction and if the offer meets the buyout price
-            if (listing.listingType == ListingType.Auction) {
-                if (_totalPrices[i] < listing.buyoutPrice) {
-                    revert OfferDoesNotMeetBuyoutPrice();
-                }
-            }
+            // if (listing.listingType == ListingType.Auction) {
+            //     if (_totalPrices[i] < listing.buyoutPrice) {
+            //         revert OfferDoesNotMeetBuyoutPrice();
+            //     }
+            // }
             
             // Accumulate total prices per currency
             bool found = false;
@@ -676,6 +678,8 @@ contract ColorMarketplace is
         Listing memory targetListing = listings[_listingId];
         address payer = _msgSender();
 
+        // todo alex: add listing status check here or in validateDirectListingSale
+
         // Check whether the settled total price and currency to use are correct.
         if (
             _currency != targetListing.currency ||
@@ -759,6 +763,7 @@ contract ColorMarketplace is
      * @param _currency The currency of the offer.
      * @param _price The price for token of the offer.
      */    
+    // todo alex: need to fully test this as the idea of making an offer on direct listing still sounds good!
     function acceptOffer(
         uint256 _listingId,
         address _offeror,
@@ -782,6 +787,7 @@ contract ColorMarketplace is
         }
 
         if (targetOffer.expirationTimestamp <= block.timestamp) {
+            // todo alex: can re-use another custom error here I think
             revert OfferExpired();
         }
 
@@ -824,7 +830,7 @@ contract ColorMarketplace is
     ) external payable override nonReentrant onlyExistingListing(_listingId) {
         Listing memory targetListing = listings[_listingId];
 
-        // todo alex: comment this
+        // todo alex: comment this better, or abstract this, I think this is re-used code elsewhere
         if (
             // targetListing.status == ListingStatus.Closed || // todo alex: chance to update status?
             targetListing.endTime <= block.timestamp ||

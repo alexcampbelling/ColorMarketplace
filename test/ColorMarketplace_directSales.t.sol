@@ -72,37 +72,6 @@ contract DirectSalesTests is TestHelpers {
         assertEq(uint256(listing.listingType), uint256(IColorMarketplace.ListingType.Direct));
     }
 
-    function test_revert_createListing_NotDirectListing() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
-        
-        // Spoof the type
-        listingParams.listingType = IColorMarketplace.ListingType.Auction;
-
-        vm.prank(seller);
-        color.createListing(listingParams);
-
-        // Buy the auction listing with buy() instead of offer() will trigger this not direct listing revert
-        uint256 listingId = 0;
-        address buyFor = address(buyer);
-        uint256 totalPrice = 1 ether;
-
-        vm.warp(150);
-
-        // Mint requisite total price to buyer.
-        vm.prank(buyer);
-        erc20.mint(buyer, totalPrice*2);
-
-        vm.prank(buyer);
-        erc20.approve(address(color), totalPrice*2);
-
-        // Buy token
-        vm.prank(buyer);
-        vm.expectRevert(
-            abi.encodeWithSelector(IColorMarketplace.NotDirectListing.selector)
-        );
-        color.buy(listingId, buyFor, address(erc20), totalPrice);
-    }
-
     function test_revert_createListing_NotWithinSaleWindow() public {
         IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
 
