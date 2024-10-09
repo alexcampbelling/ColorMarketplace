@@ -7,7 +7,6 @@ interface IColorMarketplace {
     /* Enumerators */
 
     enum TokenType {
-        ERC1155,
         ERC721
     }
 
@@ -17,8 +16,9 @@ interface IColorMarketplace {
     }
 
     enum ListingStatus { 
-        Active, 
-        Completed 
+        Open, 
+        Closed,
+        Cancelled
     }
 
     /* Structs */
@@ -28,10 +28,9 @@ interface IColorMarketplace {
         uint256 tokenId;
         uint256 startTime;
         uint256 secondsUntilEndTime;
-        uint256 quantityToList;
         address currency;
-        uint256 reservePricePerToken;
-        uint256 buyoutPricePerToken;
+        uint256 reservePrice;
+        uint256 buyoutPrice;
         ListingType listingType;
     }
 
@@ -42,20 +41,18 @@ interface IColorMarketplace {
         uint256 tokenId;
         uint256 startTime;
         uint256 endTime;
-        uint256 quantity;
         address currency;
-        uint256 reservePricePerToken;
-        uint256 buyoutPricePerToken;
-        TokenType tokenType;
+        uint256 reservePrice;
+        uint256 buyoutPrice;
         ListingType listingType;
+        ListingStatus status;
     }
 
     struct Offer {
         uint256 listingId;
         address offeror;
-        uint256 quantityWanted;
         address currency;
-        uint256 pricePerToken;
+        uint256 price;
         uint256 expirationTimestamp;
     }
 
@@ -75,7 +72,7 @@ interface IColorMarketplace {
         address indexed listingCreator
     );
 
-    event ListingRemoved(
+    event ListingCancelled(
         uint256 indexed listingId,
         address indexed listingCreator
     );
@@ -85,7 +82,6 @@ interface IColorMarketplace {
         address indexed assetContract,
         address indexed lister,
         address buyer,
-        uint256 quantityBought,
         uint256 totalPricePaid
     );
 
@@ -93,7 +89,6 @@ interface IColorMarketplace {
         uint256 indexed listingId,
         address indexed offeror,
         ListingType indexed listingType,
-        uint256 quantityWanted,
         uint256 totalOfferAmount,
         address currency
     );
@@ -159,6 +154,8 @@ interface IColorMarketplace {
     error NotAuctionListing();
     error AuctionEnded();
     error BidTooLow();
+    error NotInEscrow();
+    error ListingNotOpen();
 
     /* Functions */
 
@@ -166,10 +163,9 @@ interface IColorMarketplace {
 
     function updateListing(
         uint256 _listingId,
-        uint256 _quantityToList,
         address _currency,
-        uint256 _reservePricePerToken,
-        uint256 _buyoutPricePerToken,
+        uint256 _reservePrice,
+        uint256 _buyoutPrice,
         uint256 _startTime,
         uint256 _secondsUntilEndTime
     ) external;
@@ -177,18 +173,16 @@ interface IColorMarketplace {
     function buy(
         uint256 _listingId,
         address _buyFor,
-        uint256 _quantity,
         address _currency,
         uint256 _totalPrice
     ) external payable;
 
-    function closeAuction(uint256 _listingId, address _closeFor) external;
+    // function closeAuction(uint256 _listingId, address _closeFor) external;
 
     function offer(
         uint256 _listingId,
-        uint256 _quantityWanted,
         address _currency,
-        uint256 _pricePerToken,
+        uint256 _price,
         uint256 _expirationTimestamp
     ) external payable;
     
@@ -196,6 +190,6 @@ interface IColorMarketplace {
         uint256 _listingId,
         address _offeror,
         address _currency,
-        uint256 _pricePerToken
+        uint256 _price
     ) external;
 }

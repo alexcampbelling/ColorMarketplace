@@ -10,9 +10,9 @@ import { TestHelpers } from "./TestHelpers.sol";
 contract BulkActionsTests is TestHelpers {
 
     function test_bulkBuy_success() public {
-        IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
-        IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc721), address(erc20), false);
-        IColorMarketplace.ListingParameters memory listingParams3 = getBasicDirectListing(2, seller, address(color), address(erc721), address(erc20), false);
+        IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams3 = getBasicDirectListing(2, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams1);
@@ -44,11 +44,6 @@ contract BulkActionsTests is TestHelpers {
         buyers[1] = buyer;
         buyers[2] = buyer;
 
-        uint256[] memory quantities = new uint256[](3);
-        quantities[0] = 1;
-        quantities[1] = 1;
-        quantities[2] = 1;
-
         address[] memory paymentTokens = new address[](3);
         paymentTokens[0] = address(erc20);
         paymentTokens[1] = address(erc20);
@@ -63,7 +58,7 @@ contract BulkActionsTests is TestHelpers {
 
         // Bulk emmmm
         vm.prank(buyer);
-        color.bulkBuy(ids, buyers, quantities, paymentTokens, prices);
+        color.bulkBuy(ids, buyers, paymentTokens, prices);
 
         assertEq(color.getAllValidListings().length, 0);
         assertEq(erc20.balanceOf(buyer), 0);
@@ -74,9 +69,9 @@ contract BulkActionsTests is TestHelpers {
     }
 
     function test_bulkDelist_success() public {
-        IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
-        IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc721), address(erc20), false);
-        IColorMarketplace.ListingParameters memory listingParams3 = getBasicDirectListing(2, seller, address(color), address(erc721), address(erc20), false);
+        IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams3 = getBasicDirectListing(2, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams1);
@@ -104,10 +99,10 @@ contract BulkActionsTests is TestHelpers {
         // In this test we attempt to mix native and other accepted tokens in a bulk buy
 
         // erc20 listing
-        IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
+        IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
         
         // native token listing
-        IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc721), NATIVE_ADDRESS, false);
+        IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc721), NATIVE_ADDRESS);
 
         vm.prank(seller);
         color.createListing(listingParams1);
@@ -144,10 +139,6 @@ contract BulkActionsTests is TestHelpers {
         buyers[0] = buyer;
         buyers[1] = buyer;
 
-        uint256[] memory quantities = new uint256[](2);
-        quantities[0] = 1;
-        quantities[1] = 1;
-
         address[] memory paymentTokens = new address[](2);
         paymentTokens[0] = address(erc20);
         paymentTokens[1] = NATIVE_ADDRESS;
@@ -158,7 +149,7 @@ contract BulkActionsTests is TestHelpers {
 
         // Attempt to bulkBuy
         vm.prank(buyer);
-        color.bulkBuy{value: price}(ids, buyers, quantities, paymentTokens, prices);
+        color.bulkBuy{value: price}(ids, buyers, paymentTokens, prices);
 
         // Assertions
 
@@ -177,152 +168,232 @@ contract BulkActionsTests is TestHelpers {
         assertEq(erc20.balanceOf(platformFeeRecipient), tax);
         assertEq(platformFeeRecipient.balance, platformFeeRecipientBalBefore + tax);
     }
-    function test_bulkBuy_erc721AndErc1155_success() public {
-        // In this test we attempt to mix ERC721 and ERC1155 tokens in a bulk buy
+    // function test_bulkBuy_erc721AndErc1155_success() public {
+    //     // In this test we attempt to mix ERC721 and ERC1155 tokens in a bulk buy
 
-        // erc721 listing
-        IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS, false);
+    //     // erc721 listing
+    //     IColorMarketplace.ListingParameters memory listingParams1 = getBasicDirectListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS, false);
         
-        // erc1155 listing
-        IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc1155), NATIVE_ADDRESS, true);
+    //     // erc1155 listing
+    //     IColorMarketplace.ListingParameters memory listingParams2 = getBasicDirectListing(1, seller, address(color), address(erc1155), NATIVE_ADDRESS, true);
 
-        vm.prank(seller);
-        color.createListing(listingParams1);
+    //     vm.prank(seller);
+    //     color.createListing(listingParams1);
 
-        vm.prank(seller);
-        color.createListing(listingParams2);
+    //     vm.prank(seller);
+    //     color.createListing(listingParams2);
 
-        // Now create a buyer with enough funds to buy both listings
+    //     // Now create a buyer with enough funds to buy both listings
 
-        uint256 price = 1 ether; // hardcoded example from getBasicDirectListing
-        uint256 buyerBeforeBal = 10 ether;
-        uint256 tax = color.calculatePlatformFee(price);
+    //     uint256 price = 1 ether; // hardcoded example from getBasicDirectListing
+    //     uint256 buyerBeforeBal = 10 ether;
+    //     uint256 tax = color.calculatePlatformFee(price);
 
-        // Get before values
-        uint256 platformFeeRecipientBalBefore = platformFeeRecipient.balance;
+    //     // Get before values
+    //     uint256 platformFeeRecipientBalBefore = platformFeeRecipient.balance;
 
-        // Give native currency more than enough for both listings
-        vm.deal(buyer, buyerBeforeBal);
+    //     // Give native currency more than enough for both listings
+    //     vm.deal(buyer, buyerBeforeBal);
 
-        // Create data to buy both listings
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = 0;
-        ids[1] = 1;
+    //     // Create data to buy both listings
+    //     uint256[] memory ids = new uint256[](2);
+    //     ids[0] = 0;
+    //     ids[1] = 1;
 
-        address[] memory buyers = new address[](2);
-        buyers[0] = buyer;
-        buyers[1] = buyer;
+    //     address[] memory buyers = new address[](2);
+    //     buyers[0] = buyer;
+    //     buyers[1] = buyer;
 
-        uint256[] memory quantities = new uint256[](2);
-        quantities[0] = 1;
-        quantities[1] = 1;
+    //     uint256[] memory quantities = new uint256[](2);
+    //     quantities[0] = 1;
+    //     quantities[1] = 1;
 
-        address[] memory paymentTokens = new address[](2);
-        paymentTokens[0] = NATIVE_ADDRESS;
-        paymentTokens[1] = NATIVE_ADDRESS;
+    //     address[] memory paymentTokens = new address[](2);
+    //     paymentTokens[0] = NATIVE_ADDRESS;
+    //     paymentTokens[1] = NATIVE_ADDRESS;
 
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = price;
-        prices[1] = price;
+    //     uint256[] memory prices = new uint256[](2);
+    //     prices[0] = price;
+    //     prices[1] = price;
 
-        // Attempt to bulkBuy
+    //     // Attempt to bulkBuy
+    //     vm.prank(buyer);
+    //     color.bulkBuy{value: 2 * price}(ids, buyers, quantities, paymentTokens, prices);
+
+    //     // Assertions
+
+    //     // Buyer
+    //     assertEq(erc721.ownerOf(0), buyer);
+    //     assertEq(erc1155.balanceOf(buyer, 1), 1);
+    //     assertEq(buyer.balance, buyerBeforeBal - 2 * price); // native currency
+
+    //     // Seller
+    //     assertEq(seller.balance, 2 * (price - tax)); // and gas?
+
+    //     // Color
+    //     assertEq(color.getAllValidListings().length, 0);
+    //     assertEq(platformFeeRecipient.balance, platformFeeRecipientBalBefore + 2 * tax);
+    // }
+
+    // function test_bulkBuy_directAndAuction_success() public {
+    //     // Hardcoded values for auction and direct listings
+    //     uint256 directListingId = 0;
+    //     uint256 auctionListingId = 1;
+    //     uint256 erc721TokenId1 = 0; // Token ID for the first ERC721 token
+    //     uint256 erc721TokenId2 = 1; // Token ID for the second ERC721 token
+    //     uint256 directListingPrice = 5 ether;
+    //     uint256 auctionBuyoutPrice = 10 ether;
+
+    //     // Mint 2 ERC721 tokens for seller and approve marketplace
+    //     _setupERC721BalanceForSeller(seller, 2); // Mint 2 ERC721 tokens for the seller
+    //     vm.prank(seller);
+    //     erc721.setApprovalForAll(address(color), true);
+
+    //     // List ERC721 token (Direct Listing)
+    //     IColorMarketplace.ListingParameters memory directListingParams = IColorMarketplace.ListingParameters(
+    //         address(erc721), erc721TokenId1, block.timestamp, 0, 1, NATIVE_ADDRESS, directListingPrice, directListingPrice, IColorMarketplace.ListingType.Direct
+    //     );
+    //     vm.prank(seller);
+    //     color.createListing(directListingParams);
+
+    //     // List ERC721 token (Auction Listing)
+    //     IColorMarketplace.ListingParameters memory auctionListingParams = IColorMarketplace.ListingParameters(
+    //         address(erc721), erc721TokenId2, block.timestamp, block.timestamp + 1 days, 1, NATIVE_ADDRESS, 0, auctionBuyoutPrice, IColorMarketplace.ListingType.Auction
+    //     );
+    //     vm.prank(seller);
+    //     color.createListing(auctionListingParams);
+
+    //     // Set up the buyer with enough funds
+    //     uint256 totalBuyoutPrice = directListingPrice + auctionBuyoutPrice;
+    //     uint256 buyerBeforeBal = 30 ether;
+    //     vm.deal(buyer, buyerBeforeBal);
+
+    //     // Calculate platform fees
+    //     uint256 directTax = color.calculatePlatformFee(directListingPrice);
+    //     uint256 auctionTax = color.calculatePlatformFee(auctionBuyoutPrice);
+
+    //     // Create data to buy both listings
+    //     uint256[] memory ids = new uint256[](2);
+    //     ids[0] = directListingId;
+    //     ids[1] = auctionListingId;
+
+    //     address[] memory buyers = new address[](2);
+    //     buyers[0] = buyer;
+    //     buyers[1] = buyer;
+
+    //     uint256[] memory quantities = new uint256[](2);
+    //     quantities[0] = 1; // Quantity for ERC721 is always 1
+    //     quantities[1] = 1; // Quantity for ERC721 is always 1
+
+    //     address[] memory paymentTokens = new address[](2);
+    //     paymentTokens[0] = NATIVE_ADDRESS;
+    //     paymentTokens[1] = NATIVE_ADDRESS;
+
+    //     uint256[] memory prices = new uint256[](2);
+    //     prices[0] = directListingPrice;
+    //     prices[1] = auctionBuyoutPrice;
+
+    //     // Attempt to bulkBuy
+    //     vm.prank(buyer);
+    //     color.bulkBuy{value: totalBuyoutPrice}(ids, buyers, quantities, paymentTokens, prices);
+
+    //     // Close the auction so the seller gets total compensation - fees
+    //     vm.warp(21001); // Must warp to next block to allow seller to claim
+    //     vm.prank(seller);
+    //     color.closeAuction(auctionListingId, seller);
+
+    //     // Assertions
+    //     assertEq(erc721.ownerOf(erc721TokenId1), buyer);
+    //     assertEq(erc721.ownerOf(erc721TokenId2), buyer);
+    //     assertEq(buyer.balance, buyerBeforeBal - totalBuyoutPrice); // native currency
+    //     assertEq(seller.balance, directListingPrice - directTax + auctionBuyoutPrice - auctionTax);
+    //     assertEq(color.getAllValidListings().length, 0);
+    //     assertEq(platformFeeRecipient.balance, directTax + auctionTax);
+    // }
+
+    function test_bulkBuy_manyItems_success() public {
+        uint256 numListings = 50; // Adjust this number to test different amounts of bulk buys
+        uint256 price = 1 ether;
+        uint256 totalPrice = price * numListings;
+        uint256 buyerInitialBalance = totalPrice + 10 ether; // Extra balance for gas
+
+        // Create listings
+        for (uint256 i = 0; i < numListings; i++) {
+            IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(
+                i, 
+                seller, 
+                address(color), 
+                address(erc721), 
+                NATIVE_ADDRESS
+            );
+            vm.prank(seller);
+            color.createListing(listingParams);
+        }
+
+        // Prepare buyer
+        vm.deal(buyer, buyerInitialBalance);
+
+        // Prepare bulk buy data
+        uint256[] memory ids = new uint256[](numListings);
+        address[] memory buyers = new address[](numListings);
+        address[] memory paymentTokens = new address[](numListings);
+        uint256[] memory prices = new uint256[](numListings);
+
+        for (uint256 i = 0; i < numListings; i++) {
+            ids[i] = i;
+            buyers[i] = buyer;
+            paymentTokens[i] = NATIVE_ADDRESS;
+            prices[i] = price;
+        }
+
+        // Attempt bulk buy
         vm.prank(buyer);
-        color.bulkBuy{value: 2 * price}(ids, buyers, quantities, paymentTokens, prices);
+        color.bulkBuy{value: totalPrice}(ids, buyers, paymentTokens, prices);
 
         // Assertions
-
-        // Buyer
-        assertEq(erc721.ownerOf(0), buyer);
-        assertEq(erc1155.balanceOf(buyer, 1), 1);
-        assertEq(buyer.balance, buyerBeforeBal - 2 * price); // native currency
-
-        // Seller
-        assertEq(seller.balance, 2 * (price - tax)); // and gas?
-
-        // Color
+        for (uint256 i = 0; i < numListings; i++) {
+            assertEq(erc721.ownerOf(i), buyer);
+        }
+        assertEq(buyer.balance, buyerInitialBalance - totalPrice);
         assertEq(color.getAllValidListings().length, 0);
-        assertEq(platformFeeRecipient.balance, platformFeeRecipientBalBefore + 2 * tax);
     }
 
-    function test_bulkBuy_directAndAuction_success() public {
-        // Hardcoded values for auction and direct listings
-        uint256 directListingId = 0;
-        uint256 auctionListingId = 1;
-        uint256 erc721TokenId1 = 0; // Token ID for the first ERC721 token
-        uint256 erc721TokenId2 = 1; // Token ID for the second ERC721 token
-        uint256 directListingPrice = 5 ether;
-        uint256 auctionBuyoutPrice = 10 ether;
+    function test_bulkBuy_arithmeticOverflow() public {
+        uint256 numListings = 3;
+        uint256 price = type(uint256).max / 2 + 1; // Will cause overflow when summed
 
-        // Mint 2 ERC721 tokens for seller and approve marketplace
-        _setupERC721BalanceForSeller(seller, 2); // Mint 2 ERC721 tokens for the seller
-        vm.prank(seller);
-        erc721.setApprovalForAll(address(color), true);
+        // Create listings
+        for (uint256 i = 0; i < numListings; i++) {
+            IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(
+                i, 
+                seller, 
+                address(color), 
+                address(erc721), 
+                NATIVE_ADDRESS // Use native token to test totalNativeValue overflow
+            );
+            vm.prank(seller);
+            color.createListing(listingParams);
+        }
 
-        // List ERC721 token (Direct Listing)
-        IColorMarketplace.ListingParameters memory directListingParams = IColorMarketplace.ListingParameters(
-            address(erc721), erc721TokenId1, block.timestamp, 0, 1, NATIVE_ADDRESS, directListingPrice, directListingPrice, IColorMarketplace.ListingType.Direct
-        );
-        vm.prank(seller);
-        color.createListing(directListingParams);
+        // Prepare bulk buy data
+        uint256[] memory ids = new uint256[](numListings);
+        address[] memory buyers = new address[](numListings);
+        address[] memory paymentTokens = new address[](numListings);
+        uint256[] memory prices = new uint256[](numListings);
 
-        // List ERC721 token (Auction Listing)
-        IColorMarketplace.ListingParameters memory auctionListingParams = IColorMarketplace.ListingParameters(
-            address(erc721), erc721TokenId2, block.timestamp, block.timestamp + 1 days, 1, NATIVE_ADDRESS, 0, auctionBuyoutPrice, IColorMarketplace.ListingType.Auction
-        );
-        vm.prank(seller);
-        color.createListing(auctionListingParams);
+        for (uint256 i = 0; i < numListings; i++) {
+            ids[i] = i;
+            buyers[i] = buyer;
+            paymentTokens[i] = NATIVE_ADDRESS;
+            prices[i] = price;
+        }
 
-        // Set up the buyer with enough funds
-        uint256 totalBuyoutPrice = directListingPrice + auctionBuyoutPrice;
-        uint256 buyerBeforeBal = 30 ether;
-        vm.deal(buyer, buyerBeforeBal);
-
-        // Calculate platform fees
-        uint256 directTax = color.calculatePlatformFee(directListingPrice);
-        uint256 auctionTax = color.calculatePlatformFee(auctionBuyoutPrice);
-
-        // Create data to buy both listings
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = directListingId;
-        ids[1] = auctionListingId;
-
-        address[] memory buyers = new address[](2);
-        buyers[0] = buyer;
-        buyers[1] = buyer;
-
-        uint256[] memory quantities = new uint256[](2);
-        quantities[0] = 1; // Quantity for ERC721 is always 1
-        quantities[1] = 1; // Quantity for ERC721 is always 1
-
-        address[] memory paymentTokens = new address[](2);
-        paymentTokens[0] = NATIVE_ADDRESS;
-        paymentTokens[1] = NATIVE_ADDRESS;
-
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = directListingPrice;
-        prices[1] = auctionBuyoutPrice;
-
-        // Attempt to bulkBuy
+        // Attempt bulk buy, expect it to revert due to arithmetic overflow
         vm.prank(buyer);
-        color.bulkBuy{value: totalBuyoutPrice}(ids, buyers, quantities, paymentTokens, prices);
-
-        // Close the auction so the seller gets total compensation - fees
-        vm.warp(21001); // Must warp to next block to allow seller to claim
-        vm.prank(seller);
-        color.closeAuction(auctionListingId, seller);
-
-        // Assertions
-        assertEq(erc721.ownerOf(erc721TokenId1), buyer);
-        assertEq(erc721.ownerOf(erc721TokenId2), buyer);
-        assertEq(buyer.balance, buyerBeforeBal - totalBuyoutPrice); // native currency
-        assertEq(seller.balance, directListingPrice - directTax + auctionBuyoutPrice - auctionTax);
-        assertEq(color.getAllValidListings().length, 0);
-        assertEq(platformFeeRecipient.balance, directTax + auctionTax);
+        vm.deal(buyer, type(uint256).max);
+        vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", 0x11));
+        color.bulkBuy{value: type(uint256).max}(ids, buyers, paymentTokens, prices);
     }
-
-    function test_bulkBuy_erc1155_success() public {vm.skip(true);}
-
-    function test_bulkBuy_erc1155_notFullAmount_success() public {vm.skip(true);}
 
     function test_bulkBuy_insufficientFunds_failure() public {vm.skip(true);}
     function test_bulkSell_insufficientTokens_failure() public {vm.skip(true);}

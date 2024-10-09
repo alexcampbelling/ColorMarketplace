@@ -76,32 +76,15 @@ contract TestHelpers is BaseTest {
         address _assetContract,
         address _currency,
         IColorMarketplace.ListingType _listingType,
-        uint256 _reservePricePerToken,
-        uint256 _buyoutPricePerToken,
-        bool isERC1155
+        uint256 _reservePrice,
+        uint256 _buyoutPrice
     ) public returns (IColorMarketplace.ListingParameters memory) {
-        // // Sample listing parameters.
-        // address assetContract = _assetContract;
-        // uint256 tokenId = _tokenId;
-        // uint256 startTime = 100;
-        // uint256 secondsUntilEndTime = 200;
-        // uint256 quantityToList = 1;
-        // address currency = _currency;
-
         // Mint token for seller
-        if (isERC1155) {
-            _setupERC1155BalanceForSeller(_seller, _tokenId, 1);
-        } else {
-            _setupERC721BalanceForSeller(_seller, 1);
-        }
-
+        _setupERC721BalanceForSeller(_seller, 1);
+        
         // Approve Marketplace to transfer token.
         vm.prank(_seller);
-        if (isERC1155) {
-            erc1155.setApprovalForAll(address(_color), true);
-        } else {
-            erc721.setApprovalForAll(address(_color), true);
-        }
+        erc721.setApprovalForAll(address(_color), true);
 
         // List token
         IColorMarketplace.ListingParameters memory listingParams = IColorMarketplace.ListingParameters(
@@ -109,10 +92,9 @@ contract TestHelpers is BaseTest {
             _tokenId,
             100,
             200,
-            1, // todo: add abilitity to change via arguments
             _currency,
-            _reservePricePerToken,
-            _buyoutPricePerToken,
+            _reservePrice,
+            _buyoutPrice,
             _listingType
         );
         return listingParams;
@@ -123,8 +105,7 @@ contract TestHelpers is BaseTest {
         address _seller,
         address _color,
         address _assetContract,
-        address _currency,
-        bool isERC1155
+        address _currency
     ) public returns (IColorMarketplace.ListingParameters memory) {
         return getBasicListing(
             _tokenId,
@@ -134,10 +115,10 @@ contract TestHelpers is BaseTest {
             _currency,
             IColorMarketplace.ListingType.Direct,
             0, // reservePricePerToken is not needed for direct listing
-            1 ether,
-            isERC1155
+            1 ether
         );
     }
+    // todo alex: make this more concise, these functions needed to call based on 1155 but now that's removed
 
     function getBasic721AuctionListing() public returns (IColorMarketplace.ListingParameters memory) {
         return getBasicListing(
@@ -148,22 +129,7 @@ contract TestHelpers is BaseTest {
             address(erc20),
             IColorMarketplace.ListingType.Auction,
             1 ether,
-            2 ether,
-            false // isERC1155
-        );
-    }
-
-    function getBasic1155AuctionListing(uint256 _tokenId, address _seller, address _color, address _assetContract, address _currency) public returns (IColorMarketplace.ListingParameters memory) {
-        return getBasicListing(
-            _tokenId,
-            _seller,
-            _color,
-            _assetContract,
-            _currency,
-            IColorMarketplace.ListingType.Auction,
-            1 ether,
-            2 ether,
-            true // isERC1155
+            2 ether
         );
     }
 }
