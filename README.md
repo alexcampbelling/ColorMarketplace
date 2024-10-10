@@ -13,3 +13,9 @@ _First run `cp .env.example .env` and fill out the env vars you may need!!!_
 `forge build`: Compiles all contracts needed
 `forge test`: Runs all tests (add `-vvvv` for traces)
 `forge script ColorMarketPlaceDeploy --rpc-url $SEPOLIA_RPC_URL --verify --etherscan-api-key $ETHERSCAN_API_KEY --broadcast`: Deploy script for Sepolia, needing the correct environment variables!
+
+Todo:
+
+- Upgradability patterns (could redeploy and switch front end to point to new address, while supporting last one still.)
+- Royalties for the Story protocol
+- Add minimum offer amounts on listings. Or a number to deny the ability to offer?

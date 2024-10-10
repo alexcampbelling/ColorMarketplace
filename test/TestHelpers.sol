@@ -19,7 +19,6 @@ contract TestHelpers is BaseTest {
     address public trustedForwarder;
     address public nativeTokenWrapper;
     address public defaultAdmin;
-    string public contractURI;
     address public platformFeeRecipient;
     uint256 public platformFeeBps;
     address[] public erc20Whitelist;
@@ -43,9 +42,6 @@ contract TestHelpers is BaseTest {
         // Default admin address. Replace this with your default admin address.
         defaultAdmin = deployer;
 
-        // ContractURI setting
-        contractURI = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-
         // Platform fee recipient address. Replace this with your platform fee recipient address.
         platformFeeRecipient = deployer;
 
@@ -61,7 +57,6 @@ contract TestHelpers is BaseTest {
             nativeTokenWrapper,
             trustedForwarder, 
             defaultAdmin, 
-            contractURI, 
             platformFeeRecipient, 
             platformFeeBps,
             erc20Whitelist,
@@ -75,8 +70,6 @@ contract TestHelpers is BaseTest {
         address _color,
         address _assetContract,
         address _currency,
-        IColorMarketplace.ListingType _listingType,
-        uint256 _reservePrice,
         uint256 _buyoutPrice
     ) public returns (IColorMarketplace.ListingParameters memory) {
         // Mint token for seller
@@ -93,14 +86,12 @@ contract TestHelpers is BaseTest {
             100,
             200,
             _currency,
-            _reservePrice,
-            _buyoutPrice,
-            _listingType
+            _buyoutPrice
         );
         return listingParams;
     }
 
-    function getBasicDirectListing(
+    function getBasicListing(
         uint256 _tokenId,
         address _seller,
         address _color,
@@ -113,23 +104,7 @@ contract TestHelpers is BaseTest {
             _color,
             _assetContract,
             _currency,
-            IColorMarketplace.ListingType.Direct,
-            0, // reservePricePerToken is not needed for direct listing
             1 ether
-        );
-    }
-    // todo alex: make this more concise, these functions needed to call based on 1155 but now that's removed
-
-    function getBasic721AuctionListing() public returns (IColorMarketplace.ListingParameters memory) {
-        return getBasicListing(
-            0,
-            seller,
-            address(color),
-            address(erc721),
-            address(erc20),
-            IColorMarketplace.ListingType.Auction,
-            1 ether,
-            2 ether
         );
     }
 }

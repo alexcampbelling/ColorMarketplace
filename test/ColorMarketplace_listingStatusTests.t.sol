@@ -8,7 +8,7 @@ import { TestHelpers } from "./TestHelpers.sol";
 contract ListingStatusTests is TestHelpers {
 
     function test_createListing_statusOpen() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS);
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS);
 
         // Create the listing and capture the emitted event
         vm.prank(seller);
@@ -25,9 +25,7 @@ contract ListingStatusTests is TestHelpers {
                 startTime: 100,
                 endTime: 300,  // startTime + secondsUntilEndTime
                 currency: NATIVE_ADDRESS,
-                reservePrice: 0,
                 buyoutPrice: 1 ether,
-                listingType: IColorMarketplace.ListingType.Direct,
                 status: IColorMarketplace.ListingStatus.Open
             })
         );
@@ -46,7 +44,7 @@ contract ListingStatusTests is TestHelpers {
       uint256 price = 1 ether;
       
       // Create a listing
-      IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(
+      IColorMarketplace.ListingParameters memory listingParams = getBasicListing(
           tokenId, 
           seller, 
           address(color), 
@@ -78,19 +76,19 @@ contract ListingStatusTests is TestHelpers {
           buyer,
           price
       );
-      color.buy{value: price}(expectedListingId, buyer, NATIVE_ADDRESS, price);
+      color.buy{value: price}(expectedListingId, buyer);
 
       // Verify the listing status is now Closed
       listing = color.getListing(expectedListingId);
       assert(listing.status == IColorMarketplace.ListingStatus.Closed);
     }
 
-    function test_cancelDirectListing_statusCancelled() public {
+    function test_cancelListing_statusCancelled() public {
       // Setup
       uint256 tokenId = 0;
       
       // Create a listing
-      IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(
+      IColorMarketplace.ListingParameters memory listingParams = getBasicListing(
           tokenId, 
           seller, 
           address(color), 
@@ -108,11 +106,11 @@ contract ListingStatusTests is TestHelpers {
       IColorMarketplace.Listing memory listing = color.getListing(expectedListingId);
       assert(listing.status == IColorMarketplace.ListingStatus.Open);
 
-      // Cancel the direct listing
+      // Cancel the listing
       vm.prank(seller);
       vm.expectEmit(true, true, false, false);
       emit IColorMarketplace.ListingCancelled(expectedListingId, seller);
-      color.cancelDirectListing(expectedListingId);
+      color.cancelListing(expectedListingId);
 
       // Verify the listing status is now Cancelled
       listing = color.getListing(expectedListingId);
@@ -131,7 +129,7 @@ contract ListingStatusTests is TestHelpers {
 
       // Create multiple listings
       for (uint256 i = 0; i < numListings; i++) {
-          IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(
+          IColorMarketplace.ListingParameters memory listingParams = getBasicListing(
               i, 
               seller, 
               address(color), 
@@ -158,7 +156,7 @@ contract ListingStatusTests is TestHelpers {
       // Perform bulk buy
       vm.prank(buyer);
       vm.deal(buyer, price * numListings);
-      color.bulkBuy{value: price * numListings}(listingIds, buyers, currencies, prices);
+      color.bulkBuy{value: price * numListings}(listingIds, buyers);
 
       // Verify all listings are now Closed
       for (uint256 i = 0; i < numListings; i++) {
@@ -167,7 +165,7 @@ contract ListingStatusTests is TestHelpers {
       }
   }
 
-    function test_cancelDirectListings_multipleStatusChanges() public {
+    function test_cancelListings_multipleStatusChanges() public {
       // Setup
       uint256 numListings = 3;
       
@@ -175,7 +173,7 @@ contract ListingStatusTests is TestHelpers {
 
       // Create multiple listings
       for (uint256 i = 0; i < numListings; i++) {
-          IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(
+          IColorMarketplace.ListingParameters memory listingParams = getBasicListing(
               i, 
               seller, 
               address(color), 
@@ -199,7 +197,7 @@ contract ListingStatusTests is TestHelpers {
           vm.prank(seller);
           vm.expectEmit(true, true, false, false);
           emit IColorMarketplace.ListingCancelled(listingIds[i], seller);
-          color.cancelDirectListing(listingIds[i]);
+          color.cancelListing(listingIds[i]);
       }
 
       // Verify all listings are now Cancelled
@@ -220,7 +218,7 @@ contract ListingStatusTests is TestHelpers {
       uint256 listingDuration = 1 hours;
       
       // Create a listing with a specific duration
-      IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(
+      IColorMarketplace.ListingParameters memory listingParams = getBasicListing(
           tokenId, 
           seller, 
           address(color), 
@@ -231,7 +229,6 @@ contract ListingStatusTests is TestHelpers {
       // Modify the listing parameters for this specific test
       listingParams.startTime = block.timestamp;
       listingParams.secondsUntilEndTime = listingDuration;
-      listingParams.reservePrice = price;
       listingParams.buyoutPrice = price;
 
       // Get the expected listing ID
@@ -260,7 +257,7 @@ contract ListingStatusTests is TestHelpers {
           block.timestamp
           )
       );
-      color.buy{value: price}(expectedListingId, buyer, NATIVE_ADDRESS, price);
+      color.buy{value: price}(expectedListingId, buyer);
 
       // Verify the listing is still Open (not Closed or Expired)
       listing = color.getListing(expectedListingId);

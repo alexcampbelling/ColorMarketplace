@@ -1,4 +1,4 @@
-// Tests for direct sales
+// Tests for sales
 
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
@@ -7,7 +7,7 @@ import { ColorMarketplace } from "../src/ColorMarketplace.sol";
 import { IColorMarketplace } from "../src/IColorMarketplace.sol";
 import { TestHelpers } from "./TestHelpers.sol";
 
-contract DirectSalesTests is TestHelpers {
+contract SalesTests is TestHelpers {
 
     /* Misc tests */
 
@@ -17,7 +17,7 @@ contract DirectSalesTests is TestHelpers {
     }
 
     function test_listing_burned_success() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -33,15 +33,12 @@ contract DirectSalesTests is TestHelpers {
 
         // Check if listing valid
         assertEq(color.checkListingValid(0), false);
-    
-        // Check no valid listings
-        assertEq(color.getAllValidListings().length, 0);
     }
 
     /* Create Listing tests */
 
     function test_createListing() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -50,7 +47,7 @@ contract DirectSalesTests is TestHelpers {
 
     function test_createListing_721_success() public {
 
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -64,16 +61,14 @@ contract DirectSalesTests is TestHelpers {
         assertEq(listing.tokenOwner, seller);
         assertEq(listing.assetContract, address(erc721));
         assertEq(listing.tokenId, 0);
-        assertEq(listing.startTime, 100); // todo: does this matter on direct?
+        assertEq(listing.startTime, 100); // todo: does this ever matter really?
         assertEq(listing.endTime, 300);
         assertEq(listing.currency, address(erc20));
-        assertEq(listing.reservePrice, 0);
         assertEq(listing.buyoutPrice, 1 ether);
-        assertEq(uint256(listing.listingType), uint256(IColorMarketplace.ListingType.Direct));
     }
 
     function test_revert_createListing_NotWithinSaleWindow() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -101,7 +96,7 @@ contract DirectSalesTests is TestHelpers {
             350  // currentTime
             )
         );
-        color.buy(listingId, buyFor, address(erc20), totalPrice);
+        color.buy(listingId, buyFor);
     }
 
     // This case is for when buyer tries to buy with native token.
@@ -110,7 +105,7 @@ contract DirectSalesTests is TestHelpers {
         // todo: move to testhelpers
         address native = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         // Spoof the currency address to use native L1 currency
         listingParams.currency = native;
@@ -130,15 +125,19 @@ contract DirectSalesTests is TestHelpers {
 
         vm.prank(buyer);
         vm.expectRevert(
-            abi.encodeWithSelector(IColorMarketplace.InvalidMsgValue.selector)
+            abi.encodeWithSelector(
+                IColorMarketplace.InvalidMsgValue.selector,
+                totalPrice - 1,
+                totalPrice
+            )
         );
         // Minus 1 here is to trigger the error
-        color.buy{value: totalPrice-1}(listingId, buyFor, native, totalPrice);
+        color.buy{value: totalPrice-1}(listingId, buyFor);
     }
 
     // This revert is for approval and ownership check for tokens when listing
     function test_revert_createListing_TokenNotValidOrApproved() public {
-        // IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20), false);
+        // IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20), false);
 
         // Sample listing parameters.
         address assetContract = address(erc721);
@@ -146,9 +145,7 @@ contract DirectSalesTests is TestHelpers {
         uint256 startTime = 100;
         uint256 secondsUntilEndTime = 200;
         address currency = address(erc20);
-        uint256 reservePrice;
         uint256 buyoutPrice = 1 ether;
-        IColorMarketplace.ListingType listingType = IColorMarketplace.ListingType.Direct;
 
         // Mint token for seller
         _setupERC721BalanceForSeller(seller, 1);
@@ -165,9 +162,7 @@ contract DirectSalesTests is TestHelpers {
             startTime,
             secondsUntilEndTime,
             currency,
-            reservePrice,
-            buyoutPrice,
-            listingType
+            buyoutPrice
         );
 
         vm.prank(seller);
@@ -179,7 +174,7 @@ contract DirectSalesTests is TestHelpers {
 
     // Here we don't approve the marketplace to transfer the payment currency
     function test_revert_createListing_InsufficientBalanceOrAllowance() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -205,14 +200,14 @@ contract DirectSalesTests is TestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IColorMarketplace.InsufficientBalanceOrAllowance.selector)
         );
-        color.buy(listingId, buyFor, address(erc20), totalPrice);
+        color.buy(listingId, buyFor);
     }
 
-    /* Buy Direct listing Tests */
+    /* Buy listing Tests */
 
     // Here we buy a listing for the exact listing price
-    function test_buyDirect_erc20_success() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+    function test_buy_erc20_success() public {
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -237,7 +232,7 @@ contract DirectSalesTests is TestHelpers {
 
         // Buy token
         vm.prank(buyer);
-        color.buy(listingId, buyFor, address(erc20), totalPrice);
+        color.buy(listingId, buyFor);
 
         // Check if listing doesn't exist
         // todo alex: check via checking status now
@@ -248,14 +243,14 @@ contract DirectSalesTests is TestHelpers {
         assertEq(erc20.balanceOf(seller), 1 ether - tax);
     }
 
-    function test_buyDirect_eth_success() public {
+    function test_buy_eth_success() public {
 
     }
 
-    // Here we give an offer to a listing (this means the listing, although a direct sale can receive offers lower 
+    // Here we give an offer to a listing (this means the listing, although a  sale can receive offers lower 
     // than the listing amount and the seller can consider then accept them)
     function test_bidListing_success() public {
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
 
         vm.prank(seller);
         color.createListing(listingParams);
@@ -277,17 +272,17 @@ contract DirectSalesTests is TestHelpers {
 
         // Check that the offer emit event was seen in logs
         vm.expectEmit(true, false, false, true, address(color));
-        emit IColorMarketplace.NewOffer(listingId, buyer, IColorMarketplace.ListingType.Direct, pricePerToken, currency);
+        emit IColorMarketplace.NewOffer(listingId, buyer, pricePerToken, currency);
 
         // Offer for token
         vm.prank(buyer);
-        color.offer(listingId, currency, pricePerToken, expirationTimestamp);
+        color.offer(listingId, pricePerToken, expirationTimestamp);
 
         vm.warp(180);
 
         // Accept the offer
         vm.prank(seller);
-        color.acceptOffer(listingId, buyer, currency, pricePerToken);
+        color.acceptOffer(listingId, buyer);
 
         // Check if listing doesn't exist
         // todo alex: check status now here
@@ -298,10 +293,10 @@ contract DirectSalesTests is TestHelpers {
         assertEq(erc20.balanceOf(seller), 1 ether - tax);   
     }
 
-    function test_buyDirect_erc20_fractional_amount_success() public {
+    function test_buy_erc20_fractional_amount_success() public {
         // Set up a listing with a fractional price
         uint256 fractionalPrice = 0.5 ether; // 0.5 IP
-        IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), address(erc20));
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
         listingParams.buyoutPrice = fractionalPrice;
 
         vm.prank(seller);
@@ -310,7 +305,6 @@ contract DirectSalesTests is TestHelpers {
         // Create buy options
         uint256 listingId = 0;
         address buyFor = address(buyer);
-        uint256 quantityToBuy = 1;
         uint256 totalPrice = fractionalPrice;
 
         vm.warp(150);
@@ -324,7 +318,7 @@ contract DirectSalesTests is TestHelpers {
 
         // Buy token
         vm.prank(buyer);
-        color.buy(listingId, buyFor, address(erc20), totalPrice);
+        color.buy(listingId, buyFor);
 
         // Check if listing doesn't exist
         // todo alex: check status now here
@@ -335,11 +329,11 @@ contract DirectSalesTests is TestHelpers {
         assertEq(erc20.balanceOf(seller), fractionalPrice - tax);
     }
 
-    function test_buyDirect_with_fractional_native_currency() public {
+    function test_buy_with_fractional_native_currency() public {
     // Set up a listing with a fractional price
     uint256 fractionalPrice = 0.5 ether; // 0.5 native token
     
-    IColorMarketplace.ListingParameters memory listingParams = getBasicDirectListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS); // Use address(0) for native token
+    IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS); // Use address(0) for native token
     listingParams.buyoutPrice = fractionalPrice;
 
     vm.prank(seller);
@@ -348,7 +342,6 @@ contract DirectSalesTests is TestHelpers {
     // Create buy options
     uint256 listingId = 0;
     address buyFor = address(buyer);
-    uint256 quantityToBuy = 1;
     uint256 totalPrice = fractionalPrice;
 
     vm.warp(150);
@@ -358,7 +351,7 @@ contract DirectSalesTests is TestHelpers {
 
     // Buy token using fractional native currency
     vm.prank(buyer);
-    color.buy{value: totalPrice}(listingId, buyFor, NATIVE_ADDRESS, totalPrice); // Use address(0) for native token
+    color.buy{value: totalPrice}(listingId, buyFor); // Use address(0) for native token
 
     // Check if listing doesn't exist
     // todo alex: check status now here
