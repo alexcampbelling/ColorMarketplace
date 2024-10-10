@@ -10,6 +10,8 @@ contract ColorMarketPlaceDeploy is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // Trusted forwarder address. Replace this with your trusted forwarder address.
+        // More details on this are in ERC2771 documentation.
+        // This only needs to be set on contract creation, but it's not a big deal if it's not set.
         address trustedForwarder = 0x0000000000000000000000000000000000000000;
 
         // WETH address on Sepolia.
@@ -18,14 +20,11 @@ contract ColorMarketPlaceDeploy is Script {
         // Default admin address. Replace this with your default admin address.
         address defaultAdmin = vm.envAddress("CONTRACT_ADMIN_ADDRESS");
 
-        // ContractURI setting
-        string memory contractURI = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-
         // Platform fee recipient address. Replace this with your platform fee recipient address.
         address platformFeeRecipient = vm.envAddress("CONTRACT_ADMIN_ADDRESS");
 
         // Platform fee in basis points. Replace this with your platform fee.
-        uint256 platformFeeBps = 100; // todo: set this correctly, 100 means 1% of transfers is taxed
+        uint256 platformFeeBps = 100; // 100 means 1% of transfers is taxed
 
         // Just add WTC 0x16EFdA168bDe70E05CA6D349A690749d622F95e0
         // Can mint via 0x9a2c5733758c9e7e29ae632eeba88f077dbcfde2 (mock token faucet which mints)
@@ -33,15 +32,13 @@ contract ColorMarketPlaceDeploy is Script {
         erc20Whitelist[0] = 0x16EFdA168bDe70E05CA6D349A690749d622F95e0;
 
         // Un-used as of current - would theoretically help with not listing non transferable tokens
-        // However there are failsafes in place to prevent this (transfers on those tokens will fail)
-        // This is from the Story website
+        // However there are failsafes in place to prevent this (transfers on those tokens should fail)
         address LicenseTokenAddress = 0x1333c78A821c9a576209B01a16dDCEF881cAb6f2;
 
         new ColorMarketplace(
             trustedForwarder, 
             nativeTokenWrapper, 
-            defaultAdmin, 
-            contractURI, 
+            defaultAdmin,
             platformFeeRecipient, 
             platformFeeBps,
             erc20Whitelist,
