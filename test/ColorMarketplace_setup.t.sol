@@ -23,7 +23,7 @@ contract SetupTests is TestHelpers {
         color.erc20WhiteListAdd(address(mockToken));
 
         // Check that the ERC20 is in the whitelist
-        bool isWhitelisted = color.erc20Whitelist(address(mockToken));
+        bool isWhitelisted = color.isErc20Whitelisted(address(mockToken));
         vm.assertEq(isWhitelisted, true);
     }
 

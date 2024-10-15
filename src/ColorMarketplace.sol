@@ -3,18 +3,19 @@
 pragma solidity ^0.8.25;
 
 /**
- * @title Color Marketplace (v2.0)
+ * @title Color Marketplace
  * @author alexcampbelling
  */
 
 /* External imports */
 
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
-import "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/utils/StorageSlot.sol";
 
 /* Internal imports */
 
@@ -25,56 +26,83 @@ import "./CurrencyTransferLib.sol";
 // todo: confirm this is a required contract import to uphold Story protocol requirements
 import { ILicenseToken } from "./ILicenseToken.sol";
 
-/// @title ColorMarketplace
+/**
+ * @title ColorMarketplace
+ */
+/// @custom:storage-location erc7201:colormarketplace.storage
 contract ColorMarketplace is
     IColorMarketplace,
-    ReentrancyGuard,
-    ERC2771Context,
-    AccessControl,
-    IERC721Receiver
+    Initializable,
+    ReentrancyGuardUpgradeable,
+    AccessControlUpgradeable,
+    UUPSUpgradeable
 {
-    // Contract information
-    string public constant NAME = "Color Marketplace"; // The name of the marketplace
-    string public constant VERSION = "2.0.0"; // The version of the marketplace contract
 
-    // Token contracts
-    address private immutable NATIVE_TOKEN_WRAPPER; // The address of the native token wrapper contract (equivalent to WETH)
-    ILicenseToken public licenseToken; // The address of the license token contract, used to check for transferability
-    mapping(address => bool) public erc20Whitelist; // A whitelist of ERC20 tokens that can be used in the marketplace
-
-    // Marketplace settings
+    struct ColorMarketplaceStorage {
+        // The address of the native token wrapper contract (equivalent to WETH)
+        address NATIVE_TOKEN_WRAPPER;
+        // The address of the license token contract, used to check for transferability
+        ILicenseToken licenseToken;
+        // A whitelist of ERC20 tokens that can be used in the marketplace
+        mapping(address => bool) erc20Whitelist;
+        // The percentage of primary sales collected as platform fees, in bps
+        uint64 platformFeeBps;
+        // The total number of listings ever created in the marketplace
+        uint256 totalListings;
+        // The address that receives the platform fees
+        address platformFeeRecipient;
+        // A mapping from listing UID to listing info
+        mapping(uint256 => Listing) listings;
+        // A mapping from listing UID to a nested mapping from offeror address to the offer they made
+        mapping(uint256 => mapping(address => Offer)) offers;
+        uint256 chainVersion;
+    }
     uint64 public constant MAX_BPS = 10_000; // The maximum basis points (bps) value, equivalent to 100%
-    uint64 private platformFeeBps; // The percentage of primary sales collected as platform fees, in bps
 
-    // Marketplace state
-    uint256 public totalListings; // The total number of listings ever created in the marketplace
-    address private platformFeeRecipient; // The address that receives the platform fees
-    mapping(uint256 => Listing) public listings; // A mapping from listing UID to listing info
-    mapping(uint256 => mapping(address => Offer)) public offers; // A mapping from listing UID to a nested mapping from offeror address to the offer they made
+    bytes32 private constant STORAGE_LOCATION = keccak256("colormarketplace.storage");
 
-    /* Constructor and Receive Functions */
+    function _getStorage() internal pure returns (ColorMarketplaceStorage storage $) {
+        bytes32 position = STORAGE_LOCATION;
+        assembly {
+            $.slot := position
+        }
+    }
 
-    constructor(
+    /* Initialization Functions */
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {}
+
+    function initialize(
         address _nativeTokenWrapper,
-        address _trustedForwarder,
         address _defaultAdmin,
         address _platformFeeRecipient,
         uint256 _platformFeeBps,
         address[] memory _erc20Whitelist,
         address _licenseTokenAddress
-    ) ERC2771Context(_trustedForwarder)  {
-        NATIVE_TOKEN_WRAPPER = _nativeTokenWrapper;
+    ) public initializer {
+        __ReentrancyGuard_init();
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
 
-        platformFeeBps = uint64(_platformFeeBps);
-        platformFeeRecipient = _platformFeeRecipient;
+        ColorMarketplaceStorage storage $ = _getStorage();
+
+        $.NATIVE_TOKEN_WRAPPER = _nativeTokenWrapper;
+        $.platformFeeBps = uint64(_platformFeeBps);
+        $.platformFeeRecipient = _platformFeeRecipient;
         
         for (uint i = 0; i < _erc20Whitelist.length; i++) {
-            erc20Whitelist[_erc20Whitelist[i]] = true;
+            $.erc20Whitelist[_erc20Whitelist[i]] = true;
         }
 
-        licenseToken = ILicenseToken(_licenseTokenAddress);
+        $.licenseToken = ILicenseToken(_licenseTokenAddress);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _defaultAdmin);
+
+        $.chainVersion = 1;
     }
 
     /**
@@ -92,17 +120,8 @@ contract ColorMarketplace is
      * @return The address of the platform fee recipient and the platform fee in basis points.
      */
     function getPlatformFeeInfo() external view returns (address, uint16) {
-        return (platformFeeRecipient, uint16(platformFeeBps));
-    }
-
-    /**
-     * @dev Returns a listing with a given ID.
-     *
-     * @param _listingId The ID of the listing.
-     * @return listing The listing with the given ID.
-     */
-    function getListing(uint256 _listingId) external view returns (Listing memory listing) {
-        listing = listings[_listingId];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        return ($.platformFeeRecipient, uint16($.platformFeeBps));
     }
 
     /**
@@ -113,7 +132,8 @@ contract ColorMarketplace is
      * @return isValid A boolean indicating if the listing is valid.
      */
     function checkListingValid(uint256 _listingId) external view returns (bool isValid) {
-        Listing memory listing = listings[_listingId];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing memory listing = $.listings[_listingId];
         return _isListingValid(listing);
     }
 
@@ -181,7 +201,8 @@ contract ColorMarketplace is
         uint256 _startTime,
         uint256 _secondsUntilEndTime
     ) onlyWhitelistedErc20s(_currency) external override onlyListingCreator(_listingId) {
-        Listing memory targetListing = listings[_listingId];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing memory targetListing = $.listings[_listingId];
 
         if (targetListing.status != ListingStatus.Open) {
             revert ListingNotOpen();
@@ -193,7 +214,7 @@ contract ColorMarketplace is
             ? targetListing.startTime
             : _startTime;
 
-        listings[_listingId] = Listing({
+        $.listings[_listingId] = Listing({
             listingId: _listingId,
             tokenOwner: _msgSender(),
             assetContract: targetListing.assetContract,
@@ -234,13 +255,14 @@ contract ColorMarketplace is
     function cancelListing(
         uint256 _listingId
     ) public onlyListingCreator(_listingId) {
-        Listing memory targetListing = listings[_listingId];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing memory targetListing = $.listings[_listingId];
 
         if (targetListing.status != ListingStatus.Open) {
             revert ListingNotOpen();
         }
 
-        listings[_listingId].status = ListingStatus.Cancelled;
+        $.listings[_listingId].status = ListingStatus.Cancelled;
 
         emit ListingCancelled(_listingId, targetListing.tokenOwner);
     }
@@ -287,6 +309,7 @@ contract ColorMarketplace is
         payable 
         nonReentrant 
     {
+        ColorMarketplaceStorage storage $ = _getStorage();
         if (_listingIds.length != _buyers.length) {
             revert ArrayLengthMismatch(_listingIds.length, _buyers.length);
         }
@@ -295,7 +318,7 @@ contract ColorMarketplace is
         validateBulkBuy(_listingIds, payer);
 
         for (uint256 i = 0; i < _listingIds.length; i++) {
-            Listing memory listing = listings[_listingIds[i]];
+            Listing memory listing = $.listings[_listingIds[i]];
             executeSale(
                 listing,
                 payer,
@@ -325,11 +348,11 @@ contract ColorMarketplace is
         uint256 _price,
         uint256 _expirationTimestamp
     ) external payable override nonReentrant onlyExistingListing(_listingId) {
-
+        ColorMarketplaceStorage storage $ = _getStorage();
         if (_price == 0) {
             revert InvalidOfferPrice();
         }
-        Listing memory targetListing = listings[_listingId];
+        Listing memory targetListing = $.listings[_listingId];
 
         // Validate the listing and the offer
         validateSingularSale(targetListing, _msgSender(), _price, targetListing.currency);
@@ -356,7 +379,8 @@ contract ColorMarketplace is
      */
     // todo alex: test for this
     function cancelOffer(uint256 _listingId) external nonReentrant {
-        Offer memory existingOffer = offers[_listingId][_msgSender()];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Offer memory existingOffer = $.offers[_listingId][_msgSender()];
         
         // Check if the offer exists
         if (existingOffer.offeror == address(0)) {
@@ -369,7 +393,7 @@ contract ColorMarketplace is
         }
 
         // Delete the offer
-        delete offers[_listingId][_msgSender()];
+        delete $.offers[_listingId][_msgSender()];
 
         // Emit an event for the cancelled offer
         emit OfferCancelled(_listingId, _msgSender(), existingOffer.currency, existingOffer.price);
@@ -396,14 +420,15 @@ contract ColorMarketplace is
         onlyListingCreator(_listingId)
         onlyExistingListing(_listingId)
     {
-        Offer memory targetOffer = offers[_listingId][_offeror];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Offer memory targetOffer = $.offers[_listingId][_offeror];
 
         // Check if the offer exists
         if (targetOffer.offeror == address(0)) {
             revert OfferDoesNotExist();
         }
 
-        Listing memory targetListing = listings[_listingId];
+        Listing memory targetListing = $.listings[_listingId];
         
         // Offer may have expired by the time the listed attempts to accept this!
         if (targetOffer.expirationTimestamp <= block.timestamp) {
@@ -419,7 +444,7 @@ contract ColorMarketplace is
         );
 
         // Start mutating state now checks are done
-        delete offers[_listingId][_offeror];
+        delete $.offers[_listingId][_offeror];
 
         executeSale(
             targetListing,
@@ -441,12 +466,13 @@ contract ColorMarketplace is
         address _platformFeeRecipient,
         uint256 _platformFeeBps
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        ColorMarketplaceStorage storage $ = _getStorage();
         if (_platformFeeBps > MAX_BPS) {
             revert InvalidPlatformFeeBps();
         }
 
-        platformFeeBps = uint64(_platformFeeBps);
-        platformFeeRecipient = _platformFeeRecipient;
+        $.platformFeeBps = uint64(_platformFeeBps);
+        $.platformFeeRecipient = _platformFeeRecipient;
 
         emit PlatformFeeInfoUpdated(_platformFeeRecipient, _platformFeeBps);
     }
@@ -458,12 +484,13 @@ contract ColorMarketplace is
      * @param tokenAddress The address of the token.
      */
     function erc20WhiteListAdd(address tokenAddress) external onlyRole(DEFAULT_ADMIN_ROLE) returns (bool) {
+        ColorMarketplaceStorage storage $ = _getStorage();
         IERC20 token = IERC20(tokenAddress);
         if (token.totalSupply() <= 0) {
             revert InvalidERC20();
         }
         
-        erc20Whitelist[tokenAddress] = true;
+        $.erc20Whitelist[tokenAddress] = true;
         return true;
     }
 
@@ -473,7 +500,8 @@ contract ColorMarketplace is
      * @param tokenAddress The address of the token.
      */
     function erc20WhiteListRemove(address tokenAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        erc20Whitelist[tokenAddress] = false;
+        ColorMarketplaceStorage storage $ = _getStorage();
+        $.erc20Whitelist[tokenAddress] = false;
     }
 
     /* Public View Functions */
@@ -485,7 +513,8 @@ contract ColorMarketplace is
      * @return The platform fee.
      */
     function calculatePlatformFee(uint256 salePrice) public view returns (uint256) {
-        return salePrice * platformFeeBps / MAX_BPS;
+        ColorMarketplaceStorage storage $ = _getStorage();
+        return salePrice * $.platformFeeBps / MAX_BPS;
     }
 
     /* Internal View Functions */
@@ -580,12 +609,13 @@ contract ColorMarketplace is
      * @param buyer The address of the buyer.
      */
     function validateBulkBuy(uint256[] memory listingIds, address buyer) internal view {
+        ColorMarketplaceStorage storage $ = _getStorage();
         uint256 totalNativeValue = 0;
         CurrencyTotal[] memory currencyTotals = new CurrencyTotal[](listingIds.length);
         uint256 uniqueCurrencyCount = 0;
 
         for (uint256 i = 0; i < listingIds.length; i++) {
-            Listing memory listing = listings[listingIds[i]];
+            Listing memory listing = $.listings[listingIds[i]];
             validateListingBase(listing);
 
             // Accumulate total prices per currency
@@ -656,9 +686,10 @@ contract ColorMarketplace is
     function _createListing(ListingParameters memory _params) 
         internal 
     {
+        ColorMarketplaceStorage storage $ = _getStorage();
         // Collate all listing data
-        uint256 listingId = totalListings;
-        totalListings += 1;
+        uint256 listingId = $.totalListings;
+        $.totalListings += 1;
         address tokenOwner = _msgSender();
         uint256 startTime = _validateAndAdjustStartTime(_params.startTime);
 
@@ -682,7 +713,7 @@ contract ColorMarketplace is
             status: ListingStatus.Open
         });
 
-        listings[listingId] = newListing;
+        $.listings[listingId] = newListing;
 
         emit ListingAdded(
             listingId,
@@ -705,7 +736,8 @@ contract ColorMarketplace is
         uint256 _listingId,
         address _buyFor
     ) internal {
-        Listing memory targetListing = listings[_listingId];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing memory targetListing = $.listings[_listingId];
         address payer = _msgSender();
 
         validateSingularSale(
@@ -731,8 +763,9 @@ contract ColorMarketplace is
         address _currency,
         uint256 _currencyAmountToTransfer
     ) internal {
+        ColorMarketplaceStorage storage $ = _getStorage();
         // 1. Update listing status
-        listings[_targetListing.listingId].status = ListingStatus.Closed;
+        $.listings[_targetListing.listingId].status = ListingStatus.Closed;
 
         // 2. Payout transaction with fees
         payout(
@@ -822,6 +855,7 @@ contract ColorMarketplace is
         address _currencyToUse,
         uint256 _totalPayoutAmount
     ) private {
+        ColorMarketplaceStorage storage $ = _getStorage();
         uint256 platformFeeCut = calculatePlatformFee(_totalPayoutAmount);
 
         // todo: This is likely where Story Royalties will need to be dealt with 
@@ -830,9 +864,9 @@ contract ColorMarketplace is
         CurrencyTransferLib.transferCurrencyWithWrapper(
             _currencyToUse,
             _payer,
-            platformFeeRecipient,
+            $.platformFeeRecipient,
             platformFeeCut,
-            NATIVE_TOKEN_WRAPPER,
+            $.NATIVE_TOKEN_WRAPPER,
             true,
             0
         );
@@ -843,7 +877,7 @@ contract ColorMarketplace is
             _payer,
             _payee,
             _totalPayoutAmount - (platformFeeCut),
-            NATIVE_TOKEN_WRAPPER,
+            $.NATIVE_TOKEN_WRAPPER,
             true,
             0
         );        
@@ -856,8 +890,6 @@ contract ColorMarketplace is
      * Emits a {NewOffer} event.
      *
      * Requirements:
-     * - The quantity wanted in the offer must not exceed the quantity available in the listing.
-     * - The listing must have a quantity greater than 0.
      * - The offeror must have sufficient ERC20 balance and allowance.
      *
      * @param _targetListing The listing to which the offer is made.
@@ -867,7 +899,8 @@ contract ColorMarketplace is
         Listing memory _targetListing,
         Offer memory _newOffer
     ) private {
-        offers[_targetListing.listingId][_newOffer.offeror] = _newOffer;
+        ColorMarketplaceStorage storage $ = _getStorage();
+        $.offers[_targetListing.listingId][_newOffer.offeror] = _newOffer;
 
         emit NewOffer(
             _targetListing.listingId,
@@ -910,28 +943,9 @@ contract ColorMarketplace is
     }
 
     /**
-     * @dev Returns the token type for a given asset contract.
-     * If the asset contract supports the ERC721 interface, it returns TokenType.ERC721.
-     * Otherwise, it reverts with a TokenNotSupported error.
-     *
-     * @param _assetContract The address of the asset contract.
-     * @return tokenType The type of the token.
-     */
-    function getTokenType(
-        address _assetContract
-    ) private view returns (TokenType tokenType) {
-        if (
-            IERC165(_assetContract).supportsInterface(type(IERC721).interfaceId)
-        ) {
-            tokenType = TokenType.ERC721;
-        } else {
-            revert TokenNotSupported();
-        }
-    }
-
-    /**
      * @dev Validates an existing listing.
-     * It checks if the listing start time is in the past, if the listing end time is in the future, and if the token owner owns and has approved the quantity of listing tokens from the listing.
+     * It checks if the listing start time is in the past, if the listing end time is in the future, 
+     * and if the token owner owns the listing token.
      *
      * @param _targetListing The listing to validate.
      * @return isValid A boolean indicating if the listing is valid.
@@ -960,7 +974,8 @@ contract ColorMarketplace is
      * @param tokenAddress The address of the token.
      */
     modifier onlyWhitelistedErc20s(address tokenAddress) {
-        if (tokenAddress != CurrencyTransferLib.NATIVE_TOKEN && !erc20Whitelist[tokenAddress]) {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        if (tokenAddress != CurrencyTransferLib.NATIVE_TOKEN && !$.erc20Whitelist[tokenAddress]) {
             revert TokenNotAccepted();
         }
         _;
@@ -969,8 +984,9 @@ contract ColorMarketplace is
     // todo alex: write tests for modifers
     // todo alex: write doc string for this function
     modifier onlyWhitelistedErc20sBatch(address[] memory tokenAddresses) {
+        ColorMarketplaceStorage storage $ = _getStorage();
         for (uint256 i = 0; i < tokenAddresses.length; i++) {
-            if (tokenAddresses[i] != CurrencyTransferLib.NATIVE_TOKEN && !erc20Whitelist[tokenAddresses[i]]) {
+            if (tokenAddresses[i] != CurrencyTransferLib.NATIVE_TOKEN && !$.erc20Whitelist[tokenAddresses[i]]) {
                 revert TokenNotAccepted();
             }
         }
@@ -986,7 +1002,8 @@ contract ColorMarketplace is
      * @param _listingId The ID of the listing.
      */
     modifier onlyListingCreator(uint256 _listingId) {
-        if (listings[_listingId].tokenOwner != _msgSender()) {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        if ($.listings[_listingId].tokenOwner != _msgSender()) {
             revert NotListingOwner();
         }
         _;
@@ -1001,74 +1018,11 @@ contract ColorMarketplace is
      * @param _listingId The ID of the listing.
      */
     modifier onlyExistingListing(uint256 _listingId) {
-        if (listings[_listingId].assetContract == address(0)) {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        if ($.listings[_listingId].assetContract == address(0)) {
             revert ListingDoesNotExist();
         }
         _;
-    }
-
-    /* Override Functions */
-
-    /**
-     * @dev Handles the receipt of an ERC721 token.
-     *
-     * This function is called by an ERC721 contract when a token is transferred to this contract.
-     * It returns a bytes4 value to signal that the transfer was accepted.
-     *
-     * @return bytes4 `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))`
-     */
-    function onERC721Received(
-        address,
-        address,
-        uint256,
-        bytes calldata
-    ) external pure override returns (bytes4) {
-        return this.onERC721Received.selector;
-    }
-
-    /**
-     * @dev Overrides the default _msgSender() function to use the ERC2771Context implementation.
-     * It returns the address of the sender of the message.
-     *
-     * @return sender The address of the sender of the message.
-     */    
-    function _msgSender()
-        internal
-        view
-        override(Context, ERC2771Context)
-        returns (address sender)
-    {
-        return ERC2771Context._msgSender();
-    }
-
-    /**
-     * @dev Overrides the default _msgData() function to use the ERC2771Context implementation.
-     * It returns the calldata of the message.
-     *
-     * @return A bytes calldata representing the calldata of the message.
-     */
-    function _msgData()
-        internal
-        view
-        override(Context, ERC2771Context)
-        returns (bytes calldata)
-    {
-        return ERC2771Context._msgData();
-    }
-
-    /**
-     * @dev Overrides the default _contextContract() function to use the ERC2771Context implementation.
-     * It returns the length of the context suffix.
-     *
-     * @return The length of the context suffix.
-     */
-    function _contextSuffixLength()
-        internal
-        view
-        override(Context, ERC2771Context)
-        returns (uint256)
-    {
-        return ERC2771Context._contextSuffixLength();
     }
 
     /* Story protocol specific functions */
@@ -1110,4 +1064,44 @@ contract ColorMarketplace is
     // todo alex: Royalty functions 
     // - likely will be checking the royalty module for % and who is creator
     // - this should be shown in the ui, alongside market tax for full information to users
+
+
+    /* Getters for storage variables */
+
+    function chainVersion() public view returns (uint256) {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        return $.chainVersion;
+    }
+
+    function getNativeTokenWrapper() public view returns (address) {
+        return _getStorage().NATIVE_TOKEN_WRAPPER;
+    }
+
+    function getLicenseToken() public view returns (ILicenseToken) {
+        return _getStorage().licenseToken;
+    }
+
+    function isErc20Whitelisted(address token) public view returns (bool) {
+        return _getStorage().erc20Whitelist[token];
+    }
+
+    function getPlatformFeeBps() public view returns (uint64) {
+        return _getStorage().platformFeeBps;
+    }
+
+    function getTotalListings() public view returns (uint256) {
+        return _getStorage().totalListings;
+    }
+
+    function getPlatformFeeRecipient() public view returns (address) {
+        return _getStorage().platformFeeRecipient;
+    }
+
+    function getListing(uint256 listingId) public view returns (Listing memory) {
+        return _getStorage().listings[listingId];
+    }
+
+    function getOffer(uint256 listingId, address offeror) public view returns (Offer memory) {
+        return _getStorage().offers[listingId][offeror];
+    }
 }

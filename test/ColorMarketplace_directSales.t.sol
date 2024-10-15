@@ -12,7 +12,7 @@ contract SalesTests is TestHelpers {
     /* Misc tests */
 
     function test_state_initial() public view {
-        uint256 totalListings = color.totalListings();
+        uint256 totalListings = color.getTotalListings();
         assertEq(totalListings, 0);
     }
 
@@ -23,7 +23,7 @@ contract SalesTests is TestHelpers {
         color.createListing(listingParams);
 
         // Check if listing count incremented
-        assertEq(color.totalListings(), 1);
+        assertEq(color.getTotalListings(), 1);
 
         // Burn the token
         vm.prank(seller);
@@ -42,7 +42,7 @@ contract SalesTests is TestHelpers {
 
         vm.prank(seller);
         color.createListing(listingParams);
-        assertEq(color.totalListings(), 1);
+        assertEq(color.getTotalListings(), 1);
     }
 
     function test_createListing_721_success() public {
@@ -53,7 +53,7 @@ contract SalesTests is TestHelpers {
         color.createListing(listingParams);
 
         // Check if listing count incremented
-        assertEq(color.totalListings(), 1);
+        assertEq(color.getTotalListings(), 1);
 
         // Check if listing details are correct
         IColorMarketplace.Listing memory listing = color.getListing(0);
@@ -182,7 +182,6 @@ contract SalesTests is TestHelpers {
         // Create buy options
         uint256 listingId = 0;
         address buyFor = address(buyer);
-        uint256 quantityToBuy = 1;
         uint256 totalPrice = 1 ether;
 
         vm.warp(150);
@@ -213,12 +212,11 @@ contract SalesTests is TestHelpers {
         color.createListing(listingParams);
 
         // Check if listing count incremented
-        assertEq(color.totalListings(), 1);
+        assertEq(color.getTotalListings(), 1);
 
         // Create buy options
         uint256 listingId = 0;
         address buyFor = address(buyer);
-        uint256 quantityToBuy = 1;
         uint256 totalPrice = 1 ether;
 
         vm.warp(150);

@@ -5,7 +5,6 @@ pragma solidity ^0.8.25;
 interface IColorMarketplace {
 
     /* Enums */
-    enum TokenType { ERC721 }
     enum ListingStatus { Open, Closed, Cancelled }
 
     /* Structs */
