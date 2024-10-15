@@ -182,7 +182,6 @@ contract SalesTests is TestHelpers {
         // Create buy options
         uint256 listingId = 0;
         address buyFor = address(buyer);
-        uint256 quantityToBuy = 1;
         uint256 totalPrice = 1 ether;
 
         vm.warp(150);
@@ -218,7 +217,6 @@ contract SalesTests is TestHelpers {
         // Create buy options
         uint256 listingId = 0;
         address buyFor = address(buyer);
-        uint256 quantityToBuy = 1;
         uint256 totalPrice = 1 ether;
 
         vm.warp(150);

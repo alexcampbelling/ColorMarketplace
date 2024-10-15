@@ -9,12 +9,16 @@ pragma solidity ^0.8.25;
 
 /* External imports */
 
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
-import "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+// todo alex: clean up these imports
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
+// import "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
 /* Internal imports */
 
@@ -28,17 +32,16 @@ import { ILicenseToken } from "./ILicenseToken.sol";
 /// @title ColorMarketplace
 contract ColorMarketplace is
     IColorMarketplace,
-    ReentrancyGuard,
-    ERC2771Context,
-    AccessControl,
-    IERC721Receiver
+    Initializable,
+    ReentrancyGuardUpgradeable,
+    AccessControlUpgradeable
 {
     // Contract information
     string public constant NAME = "Color Marketplace"; // The name of the marketplace
     string public constant VERSION = "2.0.0"; // The version of the marketplace contract
 
     // Token contracts
-    address private immutable NATIVE_TOKEN_WRAPPER; // The address of the native token wrapper contract (equivalent to WETH)
+    address private NATIVE_TOKEN_WRAPPER; // The address of the native token wrapper contract (equivalent to WETH)
     ILicenseToken public licenseToken; // The address of the license token contract, used to check for transferability
     mapping(address => bool) public erc20Whitelist; // A whitelist of ERC20 tokens that can be used in the marketplace
 
@@ -52,19 +55,20 @@ contract ColorMarketplace is
     mapping(uint256 => Listing) public listings; // A mapping from listing UID to listing info
     mapping(uint256 => mapping(address => Offer)) public offers; // A mapping from listing UID to a nested mapping from offeror address to the offer they made
 
-    /* Constructor and Receive Functions */
+    /* Initialization Function */
 
-    constructor(
+    function initialize(
         address _nativeTokenWrapper,
-        address _trustedForwarder,
         address _defaultAdmin,
         address _platformFeeRecipient,
         uint256 _platformFeeBps,
         address[] memory _erc20Whitelist,
         address _licenseTokenAddress
-    ) ERC2771Context(_trustedForwarder)  {
-        NATIVE_TOKEN_WRAPPER = _nativeTokenWrapper;
+    ) public initializer {
+        __ReentrancyGuard_init();
+        __AccessControl_init();
 
+        NATIVE_TOKEN_WRAPPER = _nativeTokenWrapper;
         platformFeeBps = uint64(_platformFeeBps);
         platformFeeRecipient = _platformFeeRecipient;
         
@@ -76,6 +80,30 @@ contract ColorMarketplace is
 
         _grantRole(DEFAULT_ADMIN_ROLE, _defaultAdmin);
     }
+
+    // todo alex: remove constructor since upgradable
+    // constructor(
+    //     address _nativeTokenWrapper,
+    //     address _trustedForwarder,
+    //     address _defaultAdmin,
+    //     address _platformFeeRecipient,
+    //     uint256 _platformFeeBps,
+    //     address[] memory _erc20Whitelist,
+    //     address _licenseTokenAddress
+    // ) ERC2771Context(_trustedForwarder)  {
+    //     NATIVE_TOKEN_WRAPPER = _nativeTokenWrapper;
+
+    //     platformFeeBps = uint64(_platformFeeBps);
+    //     platformFeeRecipient = _platformFeeRecipient;
+        
+    //     for (uint i = 0; i < _erc20Whitelist.length; i++) {
+    //         erc20Whitelist[_erc20Whitelist[i]] = true;
+    //     }
+
+    //     licenseToken = ILicenseToken(_licenseTokenAddress);
+
+    //     _grantRole(DEFAULT_ADMIN_ROLE, _defaultAdmin);
+    // }
 
     /**
      * @dev Ensures that the contract doesn't accidentally receive native tokens, locking them
@@ -856,8 +884,6 @@ contract ColorMarketplace is
      * Emits a {NewOffer} event.
      *
      * Requirements:
-     * - The quantity wanted in the offer must not exceed the quantity available in the listing.
-     * - The listing must have a quantity greater than 0.
      * - The offeror must have sufficient ERC20 balance and allowance.
      *
      * @param _targetListing The listing to which the offer is made.
@@ -910,28 +936,9 @@ contract ColorMarketplace is
     }
 
     /**
-     * @dev Returns the token type for a given asset contract.
-     * If the asset contract supports the ERC721 interface, it returns TokenType.ERC721.
-     * Otherwise, it reverts with a TokenNotSupported error.
-     *
-     * @param _assetContract The address of the asset contract.
-     * @return tokenType The type of the token.
-     */
-    function getTokenType(
-        address _assetContract
-    ) private view returns (TokenType tokenType) {
-        if (
-            IERC165(_assetContract).supportsInterface(type(IERC721).interfaceId)
-        ) {
-            tokenType = TokenType.ERC721;
-        } else {
-            revert TokenNotSupported();
-        }
-    }
-
-    /**
      * @dev Validates an existing listing.
-     * It checks if the listing start time is in the past, if the listing end time is in the future, and if the token owner owns and has approved the quantity of listing tokens from the listing.
+     * It checks if the listing start time is in the past, if the listing end time is in the future, 
+     * and if the token owner owns the listing token.
      *
      * @param _targetListing The listing to validate.
      * @return isValid A boolean indicating if the listing is valid.
@@ -1005,70 +1012,6 @@ contract ColorMarketplace is
             revert ListingDoesNotExist();
         }
         _;
-    }
-
-    /* Override Functions */
-
-    /**
-     * @dev Handles the receipt of an ERC721 token.
-     *
-     * This function is called by an ERC721 contract when a token is transferred to this contract.
-     * It returns a bytes4 value to signal that the transfer was accepted.
-     *
-     * @return bytes4 `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))`
-     */
-    function onERC721Received(
-        address,
-        address,
-        uint256,
-        bytes calldata
-    ) external pure override returns (bytes4) {
-        return this.onERC721Received.selector;
-    }
-
-    /**
-     * @dev Overrides the default _msgSender() function to use the ERC2771Context implementation.
-     * It returns the address of the sender of the message.
-     *
-     * @return sender The address of the sender of the message.
-     */    
-    function _msgSender()
-        internal
-        view
-        override(Context, ERC2771Context)
-        returns (address sender)
-    {
-        return ERC2771Context._msgSender();
-    }
-
-    /**
-     * @dev Overrides the default _msgData() function to use the ERC2771Context implementation.
-     * It returns the calldata of the message.
-     *
-     * @return A bytes calldata representing the calldata of the message.
-     */
-    function _msgData()
-        internal
-        view
-        override(Context, ERC2771Context)
-        returns (bytes calldata)
-    {
-        return ERC2771Context._msgData();
-    }
-
-    /**
-     * @dev Overrides the default _contextContract() function to use the ERC2771Context implementation.
-     * It returns the length of the context suffix.
-     *
-     * @return The length of the context suffix.
-     */
-    function _contextSuffixLength()
-        internal
-        view
-        override(Context, ERC2771Context)
-        returns (uint256)
-    {
-        return ERC2771Context._contextSuffixLength();
     }
 
     /* Story protocol specific functions */

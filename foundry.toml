@@ -5,7 +5,10 @@ libs = ["lib"]
 optimizer = true
 optimizer_runs = 50 # low=prio code size, high=prio execution cost efficiency
 via_ir = true # Enable intermediate representation (IR) compilation (for stack based efficiency for tests)
-
+ffi = true
+ast = true
+build_info = true
+extra_output = ["storageLayout"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 

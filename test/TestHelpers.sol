@@ -2,15 +2,15 @@
 pragma solidity ^0.8.25;
 
 import { BaseTest } from "./utils/BaseTest.sol";
-// import { console } from "forge-std/Test.sol";
 import { ColorMarketplace } from "../src/ColorMarketplace.sol";
 import { IColorMarketplace } from "../src/IColorMarketplace.sol";
-
 import { console } from "forge-std/Test.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 contract TestHelpers is BaseTest {
-
-    ColorMarketplace public color;
+    
+    ColorMarketplace public colorMarketplace;
+    address public proxy;
 
     // Common variable names
     address public deployer;
@@ -22,7 +22,7 @@ contract TestHelpers is BaseTest {
     address public platformFeeRecipient;
     uint256 public platformFeeBps;
     address[] public erc20Whitelist;
-    address LicenseTokenAddress;
+    address public licenseTokenAddress;
 
     // Known constants
     address NATIVE_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
@@ -34,7 +34,7 @@ contract TestHelpers is BaseTest {
         buyer = getActor(2);
 
         // Trusted forwarder address. Replace this with your trusted forwarder address.
-        trustedForwarder = 0x0000000000000000000000000000000000000000;
+        trustedForwarder = address(0);
 
         // WETH address on Sepolia.
         nativeTokenWrapper = address(weth);
@@ -51,17 +51,26 @@ contract TestHelpers is BaseTest {
         erc20Whitelist = new address[](1);
         erc20Whitelist[0] = address(erc20);
 
-        address licenseTokenAddress = 0x1333c78A821c9a576209B01a16dDCEF881cAb6f2;
+        licenseTokenAddress = address(0x1333c78A821c9a576209B01a16dDCEF881cAb6f2);
 
-        color = new ColorMarketplace(
-            nativeTokenWrapper,
-            trustedForwarder, 
-            defaultAdmin, 
-            platformFeeRecipient, 
-            platformFeeBps,
-            erc20Whitelist,
-            licenseTokenAddress
+        // Deploy the upgradeable contract
+        proxy = Upgrades.deployUUPSProxy(
+            "ColorMarketplace.sol",
+            abi.encodeCall(
+                ColorMarketplace.initialize,
+                (
+                    address(0), // _nativeTokenWrapper
+                    address(this), // _defaultAdmin
+                    address(this), // _platformFeeRecipient
+                    100, // _platformFeeBps
+                    new address[](0), // _erc20Whitelist
+                    address(0) // _licenseTokenAddress
+                )
+            )
         );
+
+        // Cast the proxy address to ColorMarketplace
+        colorMarketplace = ColorMarketplace(payable(proxy));
     }
 
     function getBasicListing(

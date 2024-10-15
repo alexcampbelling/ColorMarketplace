@@ -94,7 +94,6 @@ contract ErrorsTests is TestHelpers {
     function test_notListingOwner_error() public {vm.skip(true);}
     function test_doesNotExist_error() public {vm.skip(true);}
     function test_tokenNotSupported_error() public {vm.skip(true);}
-    function test_invalidQuantity_error() public {vm.skip(true);}
     function test_invalidStartTime_error() public {vm.skip(true);}
     function test_tokenNotValidOrApproved_error() public {vm.skip(true);}
     function test_invalidPrice_error() public {vm.skip(true);}
