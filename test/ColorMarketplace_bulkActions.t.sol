@@ -23,7 +23,7 @@ contract BulkActionsTests is TestHelpers {
         vm.prank(seller);
         color.createListing(listingParams3);
 
-        assertEq(color.totalListings(), 3);
+        assertEq(color.getTotalListings(), 3);
 
         uint256 totalPrice = 1 ether;
         uint256 tax = color.calculatePlatformFee(totalPrice);
@@ -85,7 +85,7 @@ contract BulkActionsTests is TestHelpers {
         vm.prank(seller);
         color.createListing(listingParams3);
 
-        assertEq(color.totalListings(), 3);
+        assertEq(color.getTotalListings(), 3);
 
         uint256[] memory ids = new uint256[](3);
         ids[0] = 0;

@@ -53,7 +53,7 @@ contract ListingStatusTests is TestHelpers {
       );
 
       // Get the expected listing ID
-      uint256 expectedListingId = color.totalListings();
+      uint256 expectedListingId = color.getTotalListings();
 
       vm.prank(seller);
       color.createListing(listingParams);
@@ -97,7 +97,7 @@ contract ListingStatusTests is TestHelpers {
       );
 
       // Get the expected listing ID
-      uint256 expectedListingId = color.totalListings();
+      uint256 expectedListingId = color.getTotalListings();
 
       vm.prank(seller);
       color.createListing(listingParams);
@@ -140,7 +140,7 @@ contract ListingStatusTests is TestHelpers {
           vm.prank(seller);
           color.createListing(listingParams);
           
-          listingIds[i] = color.totalListings() - 1;
+          listingIds[i] = color.getTotalListings() - 1;
           buyers[i] = buyer;
           currencies[i] = NATIVE_ADDRESS;
           prices[i] = price;
@@ -184,7 +184,7 @@ contract ListingStatusTests is TestHelpers {
           vm.prank(seller);
           color.createListing(listingParams);
           
-          listingIds[i] = color.totalListings() - 1;
+          listingIds[i] = color.getTotalListings() - 1;
 
           // Verify initial status is Open
           IColorMarketplace.Listing memory listing = color.getListing(listingIds[i]);
@@ -232,7 +232,7 @@ contract ListingStatusTests is TestHelpers {
       listingParams.buyoutPrice = price;
 
       // Get the expected listing ID
-      uint256 expectedListingId = color.totalListings();
+      uint256 expectedListingId = color.getTotalListings();
 
       vm.prank(seller);
       color.createListing(listingParams);

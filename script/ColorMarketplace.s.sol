@@ -3,20 +3,17 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Script.sol";
 import "../src/ColorMarketplace.sol";
-import "../src/ColorMarketplaceProxy.sol";
-import "../src/ColorMarketplaceProxyAdmin.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 contract ColorMarketPlaceDeploy is Script {
+
+    ColorMarketplace public color;
+    address public proxy;
+
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         vm.startBroadcast(deployerPrivateKey);
-
-        // Deploy implementation
-        ColorMarketplace implementation = new ColorMarketplace();
-
-        // Deploy ProxyAdmin
-        ColorMarketplaceProxyAdmin proxyAdmin = new ColorMarketplaceProxyAdmin(deployer);
 
         // WETH address on Sepolia.
         address nativeTokenWrapper = 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14;
@@ -36,28 +33,28 @@ contract ColorMarketPlaceDeploy is Script {
         // However there are failsafes in place to prevent this (transfers on those tokens should fail)
         address licenseTokenAddress = 0x1333c78A821c9a576209B01a16dDCEF881cAb6f2;
 
-        // Prepare initialization data
-        bytes memory initData = abi.encodeWithSelector(
-            ColorMarketplace.initialize.selector,
-            nativeTokenWrapper,
-            deployer, // _defaultAdmin
-            platformFeeRecipient,
-            platformFeeBps,
-            erc20Whitelist,
-            licenseTokenAddress
+        // Deploy the upgradeable contract
+        proxy = Upgrades.deployUUPSProxy(
+            "ColorMarketplace.sol",
+            abi.encodeCall(
+                ColorMarketplace.initialize,
+                (
+                    nativeTokenWrapper, // _nativeTokenWrapper
+                    deployer, // _defaultAdmin
+                    platformFeeRecipient, // _platformFeeRecipient
+                    platformFeeBps, // _platformFeeBps
+                    erc20Whitelist, // _erc20Whitelist
+                    licenseTokenAddress // _licenseTokenAddress
+                )
+            )
         );
 
-        // Deploy Proxy
-        ColorMarketplaceProxy proxy = new ColorMarketplaceProxy(
-            address(implementation),
-            address(proxyAdmin),
-            initData
-        );
+        // Cast the proxy address to ColorMarketplace
+        color = ColorMarketplace(payable(proxy));
 
         // todo alex: test this on testnet!
         console.log("ColorMarketplace Proxy deployed at:", address(proxy));
-        console.log("ColorMarketplace Implementation deployed at:", address(implementation));
-        console.log("ColorMarketplace ProxyAdmin deployed at:", address(proxyAdmin));
+        console.log("ColorMarketplace Implementation deployed at:", address(color));
 
         vm.stopBroadcast();
     }

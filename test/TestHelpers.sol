@@ -8,8 +8,8 @@ import { console } from "forge-std/Test.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 contract TestHelpers is BaseTest {
-    
-    ColorMarketplace public colorMarketplace;
+
+    ColorMarketplace public color;
     address public proxy;
 
     // Common variable names
@@ -53,24 +53,26 @@ contract TestHelpers is BaseTest {
 
         licenseTokenAddress = address(0x1333c78A821c9a576209B01a16dDCEF881cAb6f2);
 
+        vm.prank(defaultAdmin);
         // Deploy the upgradeable contract
         proxy = Upgrades.deployUUPSProxy(
-            "ColorMarketplace.sol",
+            "ColorMarketplace.sol:ColorMarketplace",
             abi.encodeCall(
                 ColorMarketplace.initialize,
                 (
-                    address(0), // _nativeTokenWrapper
-                    address(this), // _defaultAdmin
-                    address(this), // _platformFeeRecipient
-                    100, // _platformFeeBps
-                    new address[](0), // _erc20Whitelist
-                    address(0) // _licenseTokenAddress
+                    nativeTokenWrapper, // _nativeTokenWrapper
+                    defaultAdmin, // _defaultAdmin
+                    platformFeeRecipient, // _platformFeeRecipient
+                    platformFeeBps, // _platformFeeBps
+                    erc20Whitelist, // _erc20Whitelist
+                    licenseTokenAddress // _licenseTokenAddress
                 )
             )
         );
 
         // Cast the proxy address to ColorMarketplace
-        colorMarketplace = ColorMarketplace(payable(proxy));
+        vm.prank(defaultAdmin);
+        color = ColorMarketplace(payable(proxy));
     }
 
     function getBasicListing(
