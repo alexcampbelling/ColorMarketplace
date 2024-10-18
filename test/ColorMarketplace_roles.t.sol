@@ -11,5 +11,3 @@ contract RolesTests is TestHelpers {
     function test_onlyAdmin() public {vm.skip(true);}
     function test_onlyLister() public {vm.skip(true);}
 }
-
-// todo: more tests here as I need to expand the admin interface in case of errors

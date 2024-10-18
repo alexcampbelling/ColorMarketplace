@@ -61,10 +61,12 @@ contract SalesTests is TestHelpers {
         assertEq(listing.tokenOwner, seller);
         assertEq(listing.assetContract, address(erc721));
         assertEq(listing.tokenId, 0);
-        assertEq(listing.startTime, 100); // todo: does this ever matter really?
+        assertEq(listing.startTime, 100);
         assertEq(listing.endTime, 300);
         assertEq(listing.currency, address(erc20));
         assertEq(listing.buyoutPrice, 1 ether);
+        assertEq(listing.royaltyInfo.receiver, address(0));
+        assertEq(listing.royaltyInfo.percentage, 0);
     }
 
     function test_revert_createListing_NotWithinSaleWindow() public {
@@ -102,7 +104,6 @@ contract SalesTests is TestHelpers {
     // This case is for when buyer tries to buy with native token.
     function test_revert_createListing_InvalidMsgValue() public {
         // If we want to buy via native token, we spoof the currency address as a preset address 
-        // todo: move to testhelpers
         address native = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
         IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
@@ -162,7 +163,8 @@ contract SalesTests is TestHelpers {
             startTime,
             secondsUntilEndTime,
             currency,
-            buyoutPrice
+            buyoutPrice,
+            IColorMarketplace.RoyaltyInfo(address(0), 0) // Default to no royalties
         );
 
         vm.prank(seller);
@@ -233,7 +235,6 @@ contract SalesTests is TestHelpers {
         color.buy(listingId, buyFor);
 
         // Check if listing doesn't exist
-        // todo alex: check via checking status now
         // Check if buyer has token
         assertEq(erc721.balanceOf(buyer), 1);
         // Check if seller has received payment (calculating minus tax, todo: enhance this to include royalties if any)
@@ -283,7 +284,6 @@ contract SalesTests is TestHelpers {
         color.acceptOffer(listingId, buyer);
 
         // Check if listing doesn't exist
-        // todo alex: check status now here
         // Check if buyer has token
         assertEq(erc721.balanceOf(buyer), 1);
         // Check if seller has received payment (calculating minus tax, todo: enhance this to include royalties if any)
@@ -319,7 +319,6 @@ contract SalesTests is TestHelpers {
         color.buy(listingId, buyFor);
 
         // Check if listing doesn't exist
-        // todo alex: check status now here
         // Check if buyer has token
         assertEq(erc721.balanceOf(buyer), 1);
         // Check if seller has received payment (calculating minus tax)
@@ -328,35 +327,34 @@ contract SalesTests is TestHelpers {
     }
 
     function test_buy_with_fractional_native_currency() public {
-    // Set up a listing with a fractional price
-    uint256 fractionalPrice = 0.5 ether; // 0.5 native token
-    
-    IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS); // Use address(0) for native token
-    listingParams.buyoutPrice = fractionalPrice;
+        // Set up a listing with a fractional price
+        uint256 fractionalPrice = 0.5 ether; // 0.5 native token
+        
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), NATIVE_ADDRESS); // Use address(0) for native token
+        listingParams.buyoutPrice = fractionalPrice;
 
-    vm.prank(seller);
-    color.createListing(listingParams);
+        vm.prank(seller);
+        color.createListing(listingParams);
 
-    // Create buy options
-    uint256 listingId = 0;
-    address buyFor = address(buyer);
-    uint256 totalPrice = fractionalPrice;
+        // Create buy options
+        uint256 listingId = 0;
+        address buyFor = address(buyer);
+        uint256 totalPrice = fractionalPrice;
 
-    vm.warp(150);
+        vm.warp(150);
 
-    // Ensure the buyer has enough native currency
-    vm.deal(buyer, totalPrice * 2); // Give the buyer double the fractional price
+        // Ensure the buyer has enough native currency
+        vm.deal(buyer, totalPrice * 2); // Give the buyer double the fractional price
 
-    // Buy token using fractional native currency
-    vm.prank(buyer);
-    color.buy{value: totalPrice}(listingId, buyFor); // Use address(0) for native token
+        // Buy token using fractional native currency
+        vm.prank(buyer);
+        color.buy{value: totalPrice}(listingId, buyFor); // Use address(0) for native token
 
-    // Check if listing doesn't exist
-    // todo alex: check status now here
-    // Check if buyer has token
-    assertEq(erc721.balanceOf(buyer), 1);
-    // Check if seller has received payment (calculating minus tax)
-    uint256 tax = color.calculatePlatformFee(totalPrice);
-    assertEq(seller.balance, fractionalPrice - tax);
-}
+        // Check if listing doesn't exist
+        // Check if buyer has token
+        assertEq(erc721.balanceOf(buyer), 1);
+        // Check if seller has received payment (calculating minus tax)
+        uint256 tax = color.calculatePlatformFee(totalPrice);
+        assertEq(seller.balance, fractionalPrice - tax);
+    }
 }

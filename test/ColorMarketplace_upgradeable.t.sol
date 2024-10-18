@@ -108,4 +108,6 @@ contract ColorMarketplaceUpgradeableTest is TestHelpers {
         uint256 platformFee = colorV2.calculatePlatformFee(1 ether);
         assertEq(erc20.balanceOf(seller), 1 ether - platformFee, "Seller should receive payment minus platform fee");
     }
+
+    function test_upgrade_preservesStorage() public {vm.skip(true);}
 }

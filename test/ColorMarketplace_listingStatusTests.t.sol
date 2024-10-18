@@ -26,7 +26,8 @@ contract ListingStatusTests is TestHelpers {
                 endTime: 300,  // startTime + secondsUntilEndTime
                 currency: NATIVE_ADDRESS,
                 buyoutPrice: 1 ether,
-                status: IColorMarketplace.ListingStatus.Open
+                status: IColorMarketplace.ListingStatus.Open,
+                royaltyInfo: IColorMarketplace.RoyaltyInfo(address(0), 0)
             })
         );
         color.createListing(listingParams);

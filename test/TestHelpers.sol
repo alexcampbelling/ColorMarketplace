@@ -22,12 +22,11 @@ contract TestHelpers is BaseTest {
     address public platformFeeRecipient;
     uint256 public platformFeeBps;
     address[] public erc20Whitelist;
-    address public licenseTokenAddress;
 
     // Known constants
     address NATIVE_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
-    function setUp() public override {
+    function setUp() public virtual override {
         super.setUp();
         deployer = getActor(0);
         seller = getActor(1);
@@ -51,9 +50,7 @@ contract TestHelpers is BaseTest {
         erc20Whitelist = new address[](1);
         erc20Whitelist[0] = address(erc20);
 
-        licenseTokenAddress = address(0x1333c78A821c9a576209B01a16dDCEF881cAb6f2);
-
-        vm.prank(defaultAdmin);
+        // vm.prank(defaultAdmin);
         // Deploy the upgradeable contract
         proxy = Upgrades.deployUUPSProxy(
             "ColorMarketplace.sol:ColorMarketplace",
@@ -64,14 +61,13 @@ contract TestHelpers is BaseTest {
                     defaultAdmin, // _defaultAdmin
                     platformFeeRecipient, // _platformFeeRecipient
                     platformFeeBps, // _platformFeeBps
-                    erc20Whitelist, // _erc20Whitelist
-                    licenseTokenAddress // _licenseTokenAddress
+                    erc20Whitelist // _erc20Whitelist
                 )
             )
         );
 
         // Cast the proxy address to ColorMarketplace
-        vm.prank(defaultAdmin);
+        // vm.prank(defaultAdmin);
         color = ColorMarketplace(payable(proxy));
     }
 
@@ -97,7 +93,8 @@ contract TestHelpers is BaseTest {
             100,
             200,
             _currency,
-            _buyoutPrice
+            _buyoutPrice,
+            IColorMarketplace.RoyaltyInfo(address(0), 0) // Default to no royalties
         );
         return listingParams;
     }
