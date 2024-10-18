@@ -95,9 +95,6 @@ contract BulkActionsTests is TestHelpers {
         vm.prank(seller);
         color.cancelListings(ids);
 
-        // todo alex: check this!
-        // assertEq(color.getAllValidListings().length, 0);
-            // Check that all listings are now invalid (closed)
         for (uint256 i = 0; i < 3; i++) {
             assertFalse(color.checkListingValid(i), "Listing should be invalid after purchase");
         }
@@ -160,7 +157,6 @@ contract BulkActionsTests is TestHelpers {
 
         // Attempt to bulkBuy
         vm.prank(buyer);
-        // todo alex: now we removed some of the arguments to bulk buy and buy, lets remember to remove them from tetss too, to make them cleaner
         color.bulkBuy{value: price}(ids, buyers);
 
         // Assertions
@@ -173,7 +169,7 @@ contract BulkActionsTests is TestHelpers {
 
         // Seller
         assertEq(erc20.balanceOf(seller), price - tax);
-        assertEq(seller.balance, price - tax); // todo alex: and gas? should we be checking for gas!
+        assertEq(seller.balance, price - tax);
 
         // Color
         // Check that all listings are now invalid (closed)
@@ -238,8 +234,6 @@ contract BulkActionsTests is TestHelpers {
 
     function test_bulkBuy_insufficientFunds_failure() public {vm.skip(true);}
     function test_bulkSell_insufficientTokens_failure() public {vm.skip(true);}
-
-    // todo alex: make test for bulk listing
 
     function test_bulkBuy_invalidMsgValue() public {
         uint256 numListings = 3;

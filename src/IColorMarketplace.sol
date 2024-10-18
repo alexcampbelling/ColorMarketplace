@@ -15,6 +15,7 @@ interface IColorMarketplace {
         uint256 secondsUntilEndTime;
         address currency;
         uint256 buyoutPrice;
+        RoyaltyInfo royaltyInfo;
     }
     struct Listing {
         uint256 listingId;
@@ -26,6 +27,7 @@ interface IColorMarketplace {
         address currency;
         uint256 buyoutPrice;
         ListingStatus status;
+        RoyaltyInfo royaltyInfo;
     }
     struct Offer {
         uint256 listingId;
@@ -37,6 +39,10 @@ interface IColorMarketplace {
     struct CurrencyTotal {
         address currency;
         uint256 totalPrice;
+    }
+    struct RoyaltyInfo {
+        address receiver;
+        uint256 percentage; // In basis points (e.g., 250 = 2.5%)
     }
 
     /* Events */
@@ -77,6 +83,8 @@ interface IColorMarketplace {
         address currency, 
         uint256 price
     );
+    event ERC20WhiteListAdded(address tokenAddress);
+    event ERC20WhiteListRemoved(address tokenAddress);
     
     /* Errors */
     error NotListingOwner();
@@ -99,6 +107,7 @@ interface IColorMarketplace {
     error OfferDoesNotExist();
     error NotOfferor();
     error TokenNotSupported();
+    error InvalidFeeRecipient();
 
     /* Functions */
     // Viewing functions
@@ -110,7 +119,14 @@ interface IColorMarketplace {
     // Listing functions
     function createListing(ListingParameters memory _params) external;
     function createBatchListing(ListingParameters[] memory _paramsArray) external;
-    function updateListing(uint256 _listingId, address _currency, uint256 _buyoutPrice, uint256 _startTime, uint256 _secondsUntilEndTime) external;
+    function updateListing(
+        uint256 _listingId, 
+        address _currency, 
+        uint256 _buyoutPrice, 
+        uint256 _startTime, 
+        uint256 _secondsUntilEndTime, 
+        RoyaltyInfo memory _royaltyInfo
+    ) external;
     function cancelListing(uint256 _listingId) external;
     function cancelListings(uint256[] memory _listingIds) external;
 
@@ -124,7 +140,18 @@ interface IColorMarketplace {
     function acceptOffer(uint256 _listingId, address _offeror) external;
 
     // Admin functions
-    function setPlatformFeeInfo(address _platformFeeRecipient, uint256 _platformFeeBps) external;
+    function setPlatformFeeInfo(address _platformFeeRecipient, uint256 _platformFeeBps) external returns (bool);
     function erc20WhiteListAdd(address tokenAddress) external returns (bool);
-    function erc20WhiteListRemove(address tokenAddress) external;
+    function erc20WhiteListRemove(address tokenAddress) external returns (bool);
+
+    // Royalty functions
+    function calculateRoyaltyFee(uint256 _salePrice, RoyaltyInfo memory _royaltyInfo) external pure returns (uint256);
+    function calculatePayoutDistribution(uint256 _salePrice, RoyaltyInfo memory _royaltyInfo)
+        external
+        view
+        returns (
+            uint256 platformFee,
+            uint256 royaltyFee,
+            uint256 sellerPayout
+        );
 }

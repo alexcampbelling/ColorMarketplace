@@ -52,7 +52,8 @@ contract ErrorsTests is TestHelpers {
             address(mockToken),
             listingParams.buyoutPrice,
             listingParams.startTime,
-            listingParams.secondsUntilEndTime
+            listingParams.secondsUntilEndTime,
+            IColorMarketplace.RoyaltyInfo(address(0), 0)
         );
     }
 

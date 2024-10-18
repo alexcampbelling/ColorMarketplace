@@ -29,10 +29,6 @@ contract ColorMarketPlaceDeploy is Script {
         address[] memory erc20Whitelist = new address[](1);
         erc20Whitelist[0] = 0x16EFdA168bDe70E05CA6D349A690749d622F95e0;
 
-        // Un-used as of current - would theoretically help with not listing non transferable tokens
-        // However there are failsafes in place to prevent this (transfers on those tokens should fail)
-        address licenseTokenAddress = 0x1333c78A821c9a576209B01a16dDCEF881cAb6f2;
-
         // Deploy the upgradeable contract
         proxy = Upgrades.deployUUPSProxy(
             "ColorMarketplace.sol",
@@ -43,8 +39,7 @@ contract ColorMarketPlaceDeploy is Script {
                     deployer, // _defaultAdmin
                     platformFeeRecipient, // _platformFeeRecipient
                     platformFeeBps, // _platformFeeBps
-                    erc20Whitelist, // _erc20Whitelist
-                    licenseTokenAddress // _licenseTokenAddress
+                    erc20Whitelist // _erc20Whitelist
                 )
             )
         );
@@ -52,7 +47,6 @@ contract ColorMarketPlaceDeploy is Script {
         // Cast the proxy address to ColorMarketplace
         color = ColorMarketplace(payable(proxy));
 
-        // todo alex: test this on testnet!
         console.log("ColorMarketplace Proxy deployed at:", address(proxy));
         console.log("ColorMarketplace Implementation deployed at:", address(color));
 
