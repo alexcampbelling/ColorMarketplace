@@ -168,9 +168,12 @@ contract SalesTests is TestHelpers {
         );
 
         vm.prank(seller);
-        vm.expectRevert(
-            abi.encodeWithSelector(IColorMarketplace.TokenNotValidOrApproved.selector)
-        );
+        vm.expectRevert(abi.encodeWithSelector(
+            IColorMarketplace.TokenNotValidOrApproved.selector,
+            address(erc721),
+            0,
+            seller
+        ));
         color.createListing(listingParams);
     }
 
@@ -198,9 +201,11 @@ contract SalesTests is TestHelpers {
 
         // Buy token
         vm.prank(buyer);
-        vm.expectRevert(
-            abi.encodeWithSelector(IColorMarketplace.InsufficientBalanceOrAllowance.selector)
-        );
+        vm.expectRevert(abi.encodeWithSelector(
+            IColorMarketplace.InsufficientBalanceOrAllowance.selector,
+            false,
+            true
+        ));
         color.buy(listingId, buyFor);
     }
 

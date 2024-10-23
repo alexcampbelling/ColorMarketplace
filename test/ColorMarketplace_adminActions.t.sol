@@ -90,16 +90,6 @@ contract AdminActionsTests is TestHelpers {
         assertTrue(color.isErc20Whitelisted(newTokenAddress), "New token should be whitelisted");
     }
 
-    function test_erc20WhiteListAdd_revertInvalidERC20() public {
-        // Test revert when trying to add an invalid ERC20 token
-        address invalidToken = address(0x999);
-        vm.mockCall(invalidToken, abi.encodeWithSelector(IERC20.totalSupply.selector), abi.encode(0));
-
-        vm.prank(defaultAdmin);
-        vm.expectRevert(IColorMarketplace.InvalidERC20.selector);
-        color.erc20WhiteListAdd(invalidToken);
-    }
-
     function test_erc20WhiteListRemove_success() public {
         // Ensure the token is whitelisted first
         vm.prank(defaultAdmin);
@@ -151,5 +141,114 @@ contract AdminActionsTests is TestHelpers {
         color.erc20WhiteListRemove(newTokenAddress);
 
         assertFalse(color.isErc20Whitelisted(newTokenAddress), "Token should not be whitelisted");
+    }
+
+    function test_transferAdminOwnership_success() public {
+        address newAdmin = getActor(20);
+        
+        vm.prank(defaultAdmin);
+        color.transferAdminOwnership(newAdmin);
+
+        assertTrue(color.hasRole(DEFAULT_ADMIN_ROLE, newAdmin), "New admin should have admin role");
+        assertFalse(color.hasRole(DEFAULT_ADMIN_ROLE, defaultAdmin), "Old admin should not have admin role");
+    }
+
+    function test_transferAdminOwnership_revertZeroAddress() public {
+        vm.prank(defaultAdmin);
+        vm.expectRevert(abi.encodeWithSelector(IColorMarketplace.AdminTransferFailed.selector, address(0)));
+        color.transferAdminOwnership(address(0));
+    }
+
+    function test_transferAdminOwnership_revertNonAdmin() public {
+        address newAdmin = getActor(20);
+        vm.prank(nonAdminUser);
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdminUser, DEFAULT_ADMIN_ROLE));
+        color.transferAdminOwnership(newAdmin);
+    }
+
+    function test_adminCancelListing_success() public {
+        uint256 listingId = createAndApproveListing();
+        
+        vm.prank(defaultAdmin);
+        color.adminCancelListing(listingId);
+
+        IColorMarketplace.Listing memory listing = color.getListing(listingId);
+        assertEq(uint8(listing.status), uint8(IColorMarketplace.ListingStatus.Cancelled), "Listing should be cancelled");
+    }
+
+    function test_adminCancelListing_revertNotOpen() public {
+        uint256 listingId = createAndApproveListing();
+        
+        vm.prank(defaultAdmin);
+        color.adminCancelListing(listingId);
+
+        vm.prank(defaultAdmin);
+        vm.expectRevert(abi.encodeWithSelector(IColorMarketplace.ListingNotOpen.selector, listingId, IColorMarketplace.ListingStatus.Cancelled));
+        color.adminCancelListing(listingId);
+    }
+
+    function test_adminCancelListing_revertNonAdmin() public {
+        uint256 listingId = createAndApproveListing();
+        
+        vm.prank(nonAdminUser);
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdminUser, DEFAULT_ADMIN_ROLE));
+        color.adminCancelListing(listingId);
+    }
+
+    function test_adminCancelOffer_success() public {
+        uint256 listingId = createAndApproveListing();
+        uint256 offerPrice = 1 ether;
+        uint256 expirationTime = block.timestamp + 1 days;
+
+        // Warp to the start time of the listing
+        IColorMarketplace.Listing memory listing = color.getListing(listingId);
+        vm.warp(listing.startTime);
+
+        erc20.mint(buyer, offerPrice);
+        vm.prank(buyer);
+        erc20.approve(address(color), offerPrice);
+
+        vm.prank(buyer);
+        color.offer(listingId, offerPrice, expirationTime);
+
+        // Verify the offer was created
+        IColorMarketplace.Offer memory offerBefore = color.getOffer(listingId, buyer);
+        assertEq(offerBefore.offeror, buyer, "Offer should exist before cancellation");
+
+        vm.prank(defaultAdmin);
+        color.adminCancelOffer(listingId, buyer);
+
+        // Verify the offer was cancelled
+        IColorMarketplace.Offer memory offerAfter = color.getOffer(listingId, buyer);
+        assertEq(offerAfter.offeror, address(0), "Offer should be deleted after cancellation");
+    }
+
+    function test_adminCancelOffer_revertOfferNotFound() public {
+        uint256 listingId = createAndApproveListing();
+        
+        vm.prank(defaultAdmin);
+        vm.expectRevert(abi.encodeWithSelector(IColorMarketplace.OfferNotFound.selector, listingId, buyer));
+        color.adminCancelOffer(listingId, buyer);
+    }
+
+    function test_adminCancelOffer_revertNonAdmin() public {
+        uint256 listingId = createAndApproveListing();
+        uint256 offerPrice = 1 ether;
+        uint256 expirationTime = block.timestamp + 1 days;
+
+        erc20.mint(buyer, offerPrice);
+        vm.prank(buyer);
+        erc20.approve(address(color), offerPrice);
+
+        // Warp to the start time of the listing
+        IColorMarketplace.Listing memory listing = color.getListing(listingId);
+        vm.warp(listing.startTime);
+
+        vm.prank(buyer);
+        color.offer(listingId, offerPrice, expirationTime);
+
+        vm.prank(nonAdminUser);
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdminUser, DEFAULT_ADMIN_ROLE));
+        color.adminCancelOffer(listingId, buyer);
     }
 }

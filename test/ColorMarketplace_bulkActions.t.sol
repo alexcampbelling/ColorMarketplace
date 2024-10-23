@@ -232,9 +232,6 @@ contract BulkActionsTests is TestHelpers {
         }
     }
 
-    function test_bulkBuy_insufficientFunds_failure() public {vm.skip(true);}
-    function test_bulkSell_insufficientTokens_failure() public {vm.skip(true);}
-
     function test_bulkBuy_invalidMsgValue() public {
         uint256 numListings = 3;
         uint256 price = 1 ether;

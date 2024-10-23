@@ -40,12 +40,14 @@ contract ColorMarketplace is
         mapping(address => bool) erc20Whitelist;
         // The percentage of primary sales collected as platform fees, in bps
         uint64 platformFeeBps;
-        // The total number of listings ever created in the marketplace
-        uint256 totalListings;
         // The address that receives the platform fees
         address platformFeeRecipient;
         // A mapping from listing UID to listing info
         mapping(uint256 => Listing) listings;
+        // Mapping for checking active listing Ids. (assetContract => tokenId => listingId)
+        mapping(address => mapping(uint256 => uint256)) activeListings; 
+        // The total number of listings ever created in the marketplace
+        uint256 totalListings;
         // A mapping from listing UID to a nested mapping from offeror address to the offer they made
         mapping(uint256 => mapping(address => Offer)) offers;
         uint256 chainVersion;
@@ -188,47 +190,52 @@ contract ColorMarketplace is
         address _currency,
         uint256 _buyoutPrice,
         uint256 _startTime,
-        uint256 _secondsUntilEndTime,
-        RoyaltyInfo memory _royaltyInfo
+        uint256 _secondsUntilEndTime
     ) onlyWhitelistedErc20s(_currency) external override onlyListingCreator(_listingId) {
         ColorMarketplaceStorage storage $ = _getStorage();
         Listing memory targetListing = $.listings[_listingId];
 
         if (targetListing.status != ListingStatus.Open) {
-            revert ListingNotOpen();
+            revert ListingNotOpen(_listingId, targetListing.status);
         }
 
-        _startTime = _validateAndAdjustStartTime(_startTime);
-
-        uint256 newStartTime = _startTime == 0
-            ? targetListing.startTime
-            : _startTime;
-
-        $.listings[_listingId] = Listing({
-            listingId: _listingId,
-            tokenOwner: _msgSender(),
+        ListingParameters memory params = ListingParameters({
             assetContract: targetListing.assetContract,
             tokenId: targetListing.tokenId,
-            startTime: newStartTime,
-            endTime: _secondsUntilEndTime == 0
-                ? targetListing.endTime
-                : newStartTime + _secondsUntilEndTime,
+            startTime: _startTime,
+            secondsUntilEndTime: _secondsUntilEndTime,
             currency: _currency,
             buyoutPrice: _buyoutPrice,
-            status: ListingStatus.Open,
-            royaltyInfo: _royaltyInfo
+            royaltyInfo: targetListing.royaltyInfo
         });
+
+        _updateListing(_listingId, params);
+    }
+
+    function _updateListing(uint256 _listingId, ListingParameters memory _params) internal {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing storage listing = $.listings[_listingId];
+        
+        uint256 newStartTime = _validateAndAdjustStartTime(_params.startTime);
+
+        listing.startTime = newStartTime;
+        listing.endTime = newStartTime + _params.secondsUntilEndTime;
+        listing.currency = _params.currency;
+        listing.buyoutPrice = _params.buyoutPrice;
+        listing.royaltyInfo = _params.royaltyInfo.receiver == address(0) 
+            ? RoyaltyInfo(address(0), 0) 
+            : _params.royaltyInfo;
 
         // Validate ownership and approval for the token
         if (!validateOwnershipAndApproval(
-            targetListing.tokenOwner,
-            targetListing.assetContract,
-            targetListing.tokenId
+            listing.tokenOwner,
+            listing.assetContract,
+            listing.tokenId
         )) {
-            revert TokenNotValidOrApproved();
+            revert TokenNotValidOrApproved(listing.assetContract, listing.tokenId, listing.tokenOwner);
         }
 
-        emit ListingUpdated(_listingId, targetListing.tokenOwner);
+        emit ListingUpdated(_listingId, listing.tokenOwner);
     }
 
     /**
@@ -250,12 +257,10 @@ contract ColorMarketplace is
         Listing memory targetListing = $.listings[_listingId];
 
         if (targetListing.status != ListingStatus.Open) {
-            revert ListingNotOpen();
+            revert ListingNotOpen(_listingId, targetListing.status);
         }
 
-        $.listings[_listingId].status = ListingStatus.Cancelled;
-
-        emit ListingCancelled(_listingId, targetListing.tokenOwner);
+        _cancelListing(_listingId);
     }
 
     /**
@@ -351,7 +356,7 @@ contract ColorMarketplace is
 
         // Prevent potentially lost/locked native token.
         if (msg.value != 0) {
-            revert ValueNotNeeded();
+            revert ValueNotNeeded(msg.value);
         }
 
         handleOffer(targetListing, newOffer);
@@ -367,12 +372,12 @@ contract ColorMarketplace is
         
         // Check if the offer exists
         if (existingOffer.offeror == address(0)) {
-            revert OfferDoesNotExist();
+            revert OfferDoesNotExist(_listingId, _msgSender());
         }
 
         // Check if the caller is the offeror
         if (existingOffer.offeror != _msgSender()) {
-            revert NotOfferor();
+            revert NotOfferor(existingOffer.offeror, _msgSender());
         }
 
         // Delete the offer
@@ -407,14 +412,14 @@ contract ColorMarketplace is
 
         // Check if the offer exists
         if (targetOffer.offeror == address(0)) {
-            revert OfferDoesNotExist();
+            revert OfferDoesNotExist(_listingId, _offeror);
         }
 
         Listing memory targetListing = $.listings[_listingId];
         
         // Offer may have expired by the time the listed attempts to accept this!
         if (targetOffer.expirationTimestamp <= block.timestamp) {
-            revert OfferExpired();
+            revert OfferExpired(targetOffer.expirationTimestamp, block.timestamp);
         }
 
         // Verify the sale could go through
@@ -479,12 +484,20 @@ contract ColorMarketplace is
      */
     function erc20WhiteListAdd(address tokenAddress) external onlyRole(DEFAULT_ADMIN_ROLE) returns (bool) {
         ColorMarketplaceStorage storage $ = _getStorage();
-        IERC20 token = IERC20(tokenAddress);
+
         if ($.erc20Whitelist[tokenAddress]) {
             return false; // Token is already whitelisted
         }
-        if (token.totalSupply() <= 0) {
-            revert InvalidERC20();
+
+        // Check if the address is a contract
+        if (tokenAddress.code.length == 0) {
+            revert InvalidERC20(tokenAddress);
+        }
+
+        // Try to call totalSupply() on the token and check if it returns a value
+        (bool success, bytes memory returnData) = tokenAddress.staticcall(abi.encodeWithSignature("totalSupply()"));
+        if (!success || returnData.length == 0) {
+            revert InvalidERC20(tokenAddress);
         }
         
         $.erc20Whitelist[tokenAddress] = true;
@@ -548,7 +561,7 @@ contract ColorMarketplace is
     function validateListingBase(Listing memory listing) internal view {
         // Check if the listing is open
         if (listing.status != ListingStatus.Open) {
-            revert ListingNotOpen();
+            revert ListingNotOpen(listing.listingId, listing.status);
         }
 
         // Check if the listing is active (within start and end time)
@@ -562,7 +575,7 @@ contract ColorMarketplace is
             listing.assetContract,
             listing.tokenId
         )) {
-            revert TokenNotValidOrApproved();
+            revert TokenNotValidOrApproved(listing.assetContract, listing.tokenId, listing.tokenOwner);
         }
     }
 
@@ -601,6 +614,11 @@ contract ColorMarketplace is
         } else {
             // For ERC20 tokens, check balance and allowance
             validateERC20BalAndAllowance(user, currency, amount);
+
+            // Ensure that no native value is transfered if the currency is an ERC20 token
+            if (msg.value > 0) {
+                revert ValueNotNeeded(msg.value);
+            }
         }
     }
 
@@ -616,7 +634,7 @@ contract ColorMarketplace is
         
         // Check if the currency matches the listing currency
         if (listing.currency != currency) {
-            revert CurrencyMismatch();
+            revert CurrencyMismatch(listing.currency, currency);
         }
 
         validateCurrency(buyer, currency, price);
@@ -677,7 +695,7 @@ contract ColorMarketplace is
         bool isBalanceInsufficient = balance < _currencyAmountToCheckAgainst;
         bool isAllowanceInsufficient = allowance < _currencyAmountToCheckAgainst;
         if (isBalanceInsufficient || isAllowanceInsufficient) {
-            revert InsufficientBalanceOrAllowance();
+            revert InsufficientBalanceOrAllowance(isBalanceInsufficient, isAllowanceInsufficient);
         }
     }
 
@@ -704,28 +722,37 @@ contract ColorMarketplace is
         internal 
     {
         ColorMarketplaceStorage storage $ = _getStorage();
-        // Collate all listing data
-        uint256 listingId = $.totalListings;
-        $.totalListings += 1;
         address tokenOwner = _msgSender();
         uint256 startTime = _validateAndAdjustStartTime(_params.startTime);
+        uint256 newListingId = $.totalListings;
+        $.totalListings += 1;
 
         if (!validateOwnershipAndApproval(
             tokenOwner,
             _params.assetContract,
             _params.tokenId
         )) {
-            revert TokenNotValidOrApproved();
+            revert TokenNotValidOrApproved(_params.assetContract, _params.tokenId, tokenOwner);
         }
 
-        // Check if royalty info is valid, if not set known null values
-        // Set royalty as 0 address if nothing is set
-        RoyaltyInfo memory royaltyInfo = _params.royaltyInfo.receiver == address(0) 
-            ? RoyaltyInfo(address(0), 0) 
-            : _params.royaltyInfo;
+        // Check for existing active listing
+        uint256 existingListingId = $.activeListings[_params.assetContract][_params.tokenId];
+        
+        if (existingListingId != 0) {
+            Listing storage existingListing = $.listings[existingListingId];
+            
+            if (existingListing.tokenOwner != tokenOwner) {
+                // Cancel the existing listing if it's from another user
+                _cancelListing(existingListingId);
+            } else {
+                // Update the existing listing if it's from the current owner
+                _updateListing(existingListingId, _params);
+                return;
+            }
+        }
 
-        Listing memory newListing = Listing({
-            listingId: listingId,
+        $.listings[newListingId] = Listing({
+            listingId: newListingId,
             tokenOwner: tokenOwner,
             assetContract: _params.assetContract,
             tokenId: _params.tokenId,
@@ -734,18 +761,31 @@ contract ColorMarketplace is
             currency: _params.currency,
             buyoutPrice: _params.buyoutPrice,
             status: ListingStatus.Open,
-            royaltyInfo: royaltyInfo
+            royaltyInfo: _params.royaltyInfo.receiver == address(0) 
+                ? RoyaltyInfo(address(0), 0) 
+                : _params.royaltyInfo
         });
 
-        $.listings[listingId] = newListing;
+        $.activeListings[_params.assetContract][_params.tokenId] = newListingId;
 
         emit ListingAdded(
-            listingId,
+            newListingId,
             _params.assetContract,
             tokenOwner,
-            newListing
+            $.listings[newListingId]
         );
     }
+
+    function _cancelListing(uint256 _listingId) internal {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing storage listing = $.listings[_listingId];
+        listing.status = ListingStatus.Cancelled;
+        
+        delete $.activeListings[listing.assetContract][listing.tokenId];
+
+        emit ListingCancelled(_listingId, listing.tokenOwner);
+    }
+
 
     /**
      * @dev Buys a listing on the marketplace.
@@ -789,6 +829,9 @@ contract ColorMarketplace is
         ColorMarketplaceStorage storage $ = _getStorage();
         // 1. Update listing status
         $.listings[_targetListing.listingId].status = ListingStatus.Closed;
+        // Remove from active listings
+        delete $.activeListings[_targetListing.assetContract][_targetListing.tokenId];
+
 
         // 2. Payout transaction with fees
         payout(
@@ -847,14 +890,29 @@ contract ColorMarketplace is
      * @custom:throws InvalidStartTime if the start time is more than 1 hour in the past
      */
     function _validateAndAdjustStartTime(uint256 _startTime) internal view returns (uint256) {
-        if (_startTime < block.timestamp) {
-            // Do not allow listing to start more than 1 hour in the past
-            if (block.timestamp - _startTime > 1 hours) {
-                revert InvalidStartTime();
-            }
+        // If start time is zero, default to current block timestamp
+        if (_startTime == 0) {
             return block.timestamp;
         }
-        return _startTime;
+
+        // Calculate the absolute difference between start time and current time
+        uint256 timeDifference = _startTime > block.timestamp 
+            ? _startTime - block.timestamp 
+            : block.timestamp - _startTime;
+
+        // Check if the start time is too far in the future (more than 365 days)
+        if (_startTime > block.timestamp && timeDifference > 365 days) {
+            revert StartTimeTooFarInFuture(_startTime, block.timestamp + 365 days);
+        }
+
+        // Check if the start time is more than 1 hour in the past
+        if (_startTime < block.timestamp && timeDifference > 1 hours) {
+            revert InvalidStartTime(_startTime, block.timestamp);
+        }
+
+        // If start time is in the past (but within 1 hour), adjust to current time
+        // Otherwise, use the provided start time
+        return _startTime < block.timestamp ? block.timestamp : _startTime;
     }
 
     /**
@@ -1013,7 +1071,7 @@ contract ColorMarketplace is
     modifier onlyWhitelistedErc20s(address tokenAddress) {
         ColorMarketplaceStorage storage $ = _getStorage();
         if (tokenAddress != CurrencyTransferLib.NATIVE_TOKEN && !$.erc20Whitelist[tokenAddress]) {
-            revert TokenNotAccepted();
+            revert TokenNotAccepted(tokenAddress);
         }
         _;
     }
@@ -1022,7 +1080,7 @@ contract ColorMarketplace is
         ColorMarketplaceStorage storage $ = _getStorage();
         for (uint256 i = 0; i < tokenAddresses.length; i++) {
             if (tokenAddresses[i] != CurrencyTransferLib.NATIVE_TOKEN && !$.erc20Whitelist[tokenAddresses[i]]) {
-                revert TokenNotAccepted();
+                revert TokenNotAccepted(tokenAddresses[i]);
             }
         }
         _;
@@ -1039,7 +1097,7 @@ contract ColorMarketplace is
     modifier onlyListingCreator(uint256 _listingId) {
         ColorMarketplaceStorage storage $ = _getStorage();
         if ($.listings[_listingId].tokenOwner != _msgSender()) {
-            revert NotListingOwner();
+            revert NotListingOwner($.listings[_listingId].tokenOwner, _msgSender());
         }
         _;
     }
@@ -1055,7 +1113,7 @@ contract ColorMarketplace is
     modifier onlyExistingListing(uint256 _listingId) {
         ColorMarketplaceStorage storage $ = _getStorage();
         if ($.listings[_listingId].assetContract == address(0)) {
-            revert ListingDoesNotExist();
+            revert ListingDoesNotExist(_listingId);
         }
         _;
     }
@@ -1088,10 +1146,43 @@ contract ColorMarketplace is
     }
 
     function getListing(uint256 listingId) public view returns (Listing memory) {
-        return _getStorage().listings[listingId];
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing memory listing = $.listings[listingId];
+        if (listing.assetContract == address(0)) {
+            revert ListingDoesNotExist(listingId);
+        }
+        return listing;
     }
 
     function getOffer(uint256 listingId, address offeror) public view returns (Offer memory) {
         return _getStorage().offers[listingId][offeror];
+    }
+
+    function transferAdminOwnership(address newAdmin) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newAdmin == address(0)) {
+            revert AdminTransferFailed(newAdmin);
+        }
+        _grantRole(DEFAULT_ADMIN_ROLE, newAdmin);
+        _revokeRole(DEFAULT_ADMIN_ROLE, _msgSender());
+    }
+
+    function adminCancelListing(uint256 _listingId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Listing storage listing = $.listings[_listingId];
+        if (listing.status != ListingStatus.Open) {
+            revert ListingNotOpen(_listingId, listing.status);
+        } 
+        _cancelListing(_listingId);
+        emit AdminCancelledListing(_listingId, _msgSender());
+    }
+
+    function adminCancelOffer(uint256 _listingId, address _offeror) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        ColorMarketplaceStorage storage $ = _getStorage();
+        Offer memory existingOffer = $.offers[_listingId][_offeror];
+        if (existingOffer.offeror == address(0)) {
+            revert OfferNotFound(_listingId, _offeror);
+        }
+        delete $.offers[_listingId][_offeror];
+        emit AdminCancelledOffer(_listingId, _offeror, _msgSender());
     }
 }

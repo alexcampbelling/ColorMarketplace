@@ -85,29 +85,34 @@ interface IColorMarketplace {
     );
     event ERC20WhiteListAdded(address tokenAddress);
     event ERC20WhiteListRemoved(address tokenAddress);
+    event AdminCancelledListing(uint256 indexed listingId, address admin);
+    event AdminCancelledOffer(uint256 indexed listingId, address indexed offeror, address admin);
+
     
     /* Errors */
-    error NotListingOwner();
-    error ListingDoesNotExist();
-    error InvalidStartTime();
-    error TokenNotValidOrApproved();
-    error InvalidPrice();
+    error NotListingOwner(address actualOwner, address caller);
+    error ListingDoesNotExist(uint256 listingId);
+    error InvalidStartTime(uint256 providedStartTime, uint256 currentTime);
+    error TokenNotValidOrApproved(address assetContract, uint256 tokenId, address owner);
     error InvalidMsgValue(uint256 sent, uint256 expected);
-    error InsufficientBalanceOrAllowance();
-    error OfferExpired();
+    error InsufficientBalanceOrAllowance(bool isBalanceInsufficient, bool isAllowanceInsufficient);
+    error OfferExpired(uint256 expirationTime, uint256 currentTime);
     error InactiveListing(uint256 startTime, uint256 endTime, uint256 currentTime);
-    error ValueNotNeeded();
+    error ValueNotNeeded(uint256 sentValue);
     error InvalidPlatformFeeBps();
-    error InvalidERC20();
-    error TokenNotAccepted();
-    error ListingNotOpen();
-    error CurrencyMismatch();
+    error InvalidERC20(address tokenAddress);
+    error TokenNotAccepted(address tokenAddress);
+    error ListingNotOpen(uint256 listingId, ListingStatus currentStatus);
+    error CurrencyMismatch(address expectedCurrency, address providedCurrency);
     error ArrayLengthMismatch(uint256 length1, uint256 length2);
     error InvalidOfferPrice();
-    error OfferDoesNotExist();
-    error NotOfferor();
-    error TokenNotSupported();
+    error OfferDoesNotExist(uint256 listingId, address offeror);
+    error NotOfferor(address actualOfferor, address caller);
+    error TokenNotSupported(address tokenAddress);
     error InvalidFeeRecipient();
+    error StartTimeTooFarInFuture(uint256 providedStartTime, uint256 maxAllowedTime);
+    error AdminTransferFailed(address newAdmin);
+    error OfferNotFound(uint256 listingId, address offeror);
 
     /* Functions */
     // Viewing functions
@@ -124,8 +129,7 @@ interface IColorMarketplace {
         address _currency, 
         uint256 _buyoutPrice, 
         uint256 _startTime, 
-        uint256 _secondsUntilEndTime, 
-        RoyaltyInfo memory _royaltyInfo
+        uint256 _secondsUntilEndTime
     ) external;
     function cancelListing(uint256 _listingId) external;
     function cancelListings(uint256[] memory _listingIds) external;
@@ -143,6 +147,9 @@ interface IColorMarketplace {
     function setPlatformFeeInfo(address _platformFeeRecipient, uint256 _platformFeeBps) external returns (bool);
     function erc20WhiteListAdd(address tokenAddress) external returns (bool);
     function erc20WhiteListRemove(address tokenAddress) external returns (bool);
+    function adminCancelListing(uint256 _listingId) external; // todo
+    function adminCancelOffer(uint256 _listingId, address _offeror) external; // todo
+    function transferAdminOwnership(address newAdmin) external; // todo
 
     // Royalty functions
     function calculateRoyaltyFee(uint256 _salePrice, RoyaltyInfo memory _royaltyInfo) external pure returns (uint256);
