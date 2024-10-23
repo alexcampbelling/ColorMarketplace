@@ -115,4 +115,18 @@ contract TestHelpers is BaseTest {
             1 ether
         );
     }
+
+    function createBasicListing() public returns (uint256 listingId) {
+        IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
+        vm.prank(seller);
+        color.createListing(listingParams);
+        return 0; // First listing ID is 0
+    }
+
+    function createAndApproveListing() public returns (uint256 listingId) {
+        _setupERC721BalanceForSeller(seller, 1);
+        vm.prank(seller);
+        erc721.setApprovalForAll(address(color), true);
+        return createBasicListing();
+    }
 }

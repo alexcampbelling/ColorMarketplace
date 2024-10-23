@@ -89,33 +89,6 @@ contract RoyaltiesTests is TestHelpers {
         assertEq(sellerPayout, expectedSellerPayout);
     }
 
-    function test_updateListingRoyalties_success() public {
-        // Create initial listing
-        test_createListingWithRoyalties_success();
-
-        vm.warp(150);
-
-        // Update royalty info
-        address newRoyaltyReceiver = getActor(6);
-        uint256 newRoyaltyPercentage = 500; // 5%
-
-        IColorMarketplace.Listing memory listing = color.getListing(0); // Assuming the listing ID is 0
-
-        vm.prank(seller);
-        color.updateListing(
-            0, // Assuming the listing ID is 0
-            listing.currency,
-            listing.buyoutPrice,
-            listing.startTime,
-            listing.endTime - listing.startTime,
-            IColorMarketplace.RoyaltyInfo(newRoyaltyReceiver, newRoyaltyPercentage)
-        );
-
-        IColorMarketplace.Listing memory updatedListing = color.getListing(0);
-        assertEq(updatedListing.royaltyInfo.receiver, newRoyaltyReceiver);
-        assertEq(updatedListing.royaltyInfo.percentage, newRoyaltyPercentage);
-    }
-
     function test_zeroRoyalty_success() public {
         IColorMarketplace.ListingParameters memory listingParams = getBasicListing(0, seller, address(color), address(erc721), address(erc20));
         listingParams.royaltyInfo = IColorMarketplace.RoyaltyInfo(address(0), 0);
@@ -194,12 +167,4 @@ contract RoyaltiesTests is TestHelpers {
         assertEq(color.getPlatformFeeRecipient().balance, platformFeeRecipientBalanceBefore + expectedPlatformFee);
     }
 
-    function test_royaltyCalculation_exactPercentage() public {vm.skip(true);}
-    // Test if the royalty is calculated correctly for an exact percentage (e.g., 2.5%)
-    function test_royaltyCalculation_roundingDown() public {vm.skip(true);}
-    // Test if the royalty calculation rounds down correctly for fractional amounts
-    function test_royaltyCalculation_zeroRoyalty() public {vm.skip(true);}
-    // Test behavior when royalty percentage is set to 0%
-    function test_royaltyDistribution_recipientAddressZero() public {vm.skip(true);}
-    // Test behavior when royalty recipient address is set to address(0)
 }

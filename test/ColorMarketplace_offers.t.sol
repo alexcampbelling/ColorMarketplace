@@ -71,6 +71,30 @@ contract OfferTests is TestHelpers {
     assertEq(erc721.ownerOf(0), buyer, "Buyer should now own the NFT");
     uint256 tax = color.calculatePlatformFee(offerPrice);
     assertEq(erc20.balanceOf(seller), offerPrice - tax, "Seller should receive the full offer price minus fees");
-}
+  }
+
+  function test_cancelOffer_success() public {
+    uint256 listingId = createAndApproveListing();
+
+    IColorMarketplace.Listing memory listing = color.getListing(listingId);
+    vm.warp(listing.startTime);
+
+    vm.startPrank(buyer);
+    erc20.mint(buyer, 3 ether);
+    erc20.approve(address(color), 2 ether);
+    vm.stopPrank();
+    
+    // Make an offer
+    vm.prank(buyer);
+    color.offer(listingId, 1 ether, block.timestamp + 1 hours);
+    
+    // Cancel the offer
+    vm.prank(buyer);
+    color.cancelOffer(listingId);
+    
+    // Verify the offer no longer exists
+    IColorMarketplace.Offer memory offer = color.getOffer(listingId, buyer);
+    assertEq(offer.offeror, address(0), "Offer should be deleted");
+  }
   
 }

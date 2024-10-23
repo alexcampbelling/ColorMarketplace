@@ -88,7 +88,92 @@ For more information about the underlying protocol powering our marketplace, che
 
 ### Usage
 
-... to write!
+#### Listing and buying life cycle
+
+- User A creates a listing:
+
+```
+A calls createListing(ListingParameters{
+    assetContract: NFT_CONTRACT_ADDRESS,
+    tokenId: 1,
+    startTime: CURRENT_TIME,
+    secondsUntilEndTime: 7 DAYS,
+    currency: ERC20_TOKEN_ADDRESS,
+    buyoutPrice: 1 ETHER,
+    royaltyInfo: RoyaltyInfo{receiver: ROYALTY_RECEIVER, percentage: 250} // 2.5%
+  })
+```
+
+- User B buys the listing:
+
+```
+B calls buy(listingId: 0, buyFor: B's_ADDRESS)
+```
+
+#### Bidding on listings
+
+- User C makes an offer:
+
+```
+  C calls offer(listingId: 0, price: 0.8 ETHER, expirationTimestamp: CURRENT_TIME + 1 DAY)
+```
+
+- User A (listing owner) accepts the offer:
+
+```
+  A calls acceptOffer(listingId: 0, offeror: C's_ADDRESS)
+```
+
+#### Admin commands
+
+- Update platform fee:
+
+```
+  Admin calls setPlatformFeeInfo(newFeeRecipient: FEE_RECIPIENT_ADDRESS, newFeeBps: 250) // 2.5%
+```
+
+- Add ERC20 token to whitelist:
+
+```
+  Admin calls erc20WhiteListAdd(tokenAddress: NEW_ERC20_TOKEN_ADDRESS)
+```
+
+- Remove ERC20 token from whitelist:
+
+```
+Admin calls erc20WhiteListRemove(tokenAddress: ERC20_TOKEN_ADDRESS)
+```
+
+- Transfer admin ownership:
+
+```
+Admin calls transferAdminOwnership(newAdmin: NEW_ADMIN_ADDRESS)
+```
+
+- Cancel a listing:
+
+```
+Admin calls adminCancelListing(listingId: LISTING_ID)
+```
+
+- Cancel an offer:
+
+```
+Admin calls adminCancelOffer(listingId: LISTING_ID, offeror: OFFEROR_ADDRESS)
+```
+
+#### How royalties work
+
+Royalties are set when creating a listing and cannot be changed after listing creation. They are specified as a percentage (in basis points) and a receiver address.
+
+- When a sale occurs, the royalty is calculated as:
+
+```
+royaltyAmount = salePrice * royaltyPercentage / 10000
+```
+
+- The royalty is sent to the specified receiver address during the sale transaction.
+- Royalties are optional. If no royalty is desired, set the receiver to the zero address and percentage to 0.
 
 ## Testing
 
@@ -146,6 +231,4 @@ We look forward to connecting with you and building the future of NFT trading to
 
 ## Todo:
 
-- Upgradability patterns (could redeploy and switch front end to point to new address, while supporting last one still.)
-- Royalties for the Story protocol
 - Add minimum offer amounts on listings. Or a number to deny the ability to offer?
